@@ -1,0 +1,170 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, View, Pressable } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { getItems, initDb } from '@/lib/db';
+
+type InventoryItem = {
+  id: string;
+  name: string;
+  stock: number;
+};
+
+export default function InventoryScreen() {
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+  const router = useRouter();
+  const [items, setItems] = useState<InventoryItem[]>([]);
+
+  const loadItems = useCallback(async () => {
+    await initDb();
+    const rows = await getItems();
+    setItems(
+      rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        stock: row.stock_qty,
+      }))
+    );
+  }, []);
+
+  useEffect(() => {
+    loadItems().catch((error) => {
+      Alert.alert('Load error', 'Unable to load inventory data.');
+      console.error(error);
+    });
+  }, [loadItems]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadItems().catch((error) => {
+        Alert.alert('Load error', 'Unable to refresh inventory.');
+        console.error(error);
+      });
+    }, [loadItems])
+  );
+
+  const inventoryList = useMemo(() => {
+    return items.map((item) => ({
+      ...item,
+      status: item.stock <= 5 ? 'Low stock' : 'In stock',
+    }));
+  }, [items]);
+
+  return (
+    <ThemedView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <ThemedText type="title">Inventory</ThemedText>
+          <ThemedText style={styles.caption}>Track stock levels and restock fast.</ThemedText>
+        </View>
+
+        <View style={styles.actionRow}>
+          <Pressable
+            style={[styles.actionButton, { backgroundColor: theme.primary }]}
+            onPress={() => router.push('/inventory-item')}>
+            <ThemedText style={styles.actionText}>Add Item</ThemedText>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.secondaryButton,
+              { borderColor: theme.border, backgroundColor: theme.surface },
+            ]}
+            onPress={() => router.push('/stock-adjust')}>
+            <ThemedText style={styles.secondaryText}>Stock In/Out</ThemedText>
+          </Pressable>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText type="subtitle">Low stock alerts</ThemedText>
+          <View
+            style={[
+              styles.card,
+              { borderColor: theme.border, backgroundColor: theme.surface },
+            ]}>
+            {inventoryList.map((item, index) => (
+              <Pressable
+                key={item.id}
+                onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
+                style={[
+                  styles.row,
+                  index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
+                ]}>
+                <View>
+                  <ThemedText style={styles.itemName}>{item.name}</ThemedText>
+                  <ThemedText style={styles.itemMeta}>{item.status}</ThemedText>
+                </View>
+                <View style={[styles.stockPill, { backgroundColor: theme.secondary }]}>
+                  <ThemedText style={[styles.stockText, { color: theme.onSecondary }]}>
+                    {item.stock}
+                  </ThemedText>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+    gap: 24,
+  },
+  header: { gap: 8 },
+  caption: { fontSize: 14, opacity: 0.7 },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  actionText: { color: '#FFFFFF', fontSize: 14 },
+  secondaryButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  secondaryText: { fontSize: 14 },
+  section: { gap: 12 },
+  card: {
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  row: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  rowDivider: {
+    borderTopWidth: 1,
+  },
+  itemName: { fontSize: 15 },
+  itemMeta: { fontSize: 12, opacity: 0.6 },
+  stockPill: {
+    minWidth: 36,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#F4E6C1',
+    alignItems: 'center',
+  },
+  stockText: { fontSize: 13 },
+});
