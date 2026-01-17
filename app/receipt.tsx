@@ -10,11 +10,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCurrency } from '@/hooks/use-currency';
 import { getBusinessProfile, getSaleById, getSaleItems, initDb } from '@/lib/db';
-
-function formatNaira(amount: number) {
-  return `₦${amount.toLocaleString('en-NG')}`;
-}
 
 function formatDateTime(ts: number) {
   return new Date(ts).toLocaleString('en-NG', {
@@ -30,6 +27,7 @@ export default function ReceiptScreen() {
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { format } = useCurrency();
   const { saleId } = useLocalSearchParams<{ saleId?: string }>();
   const receiptRef = useRef<View>(null);
   const [profile, setProfile] = useState<{
@@ -39,6 +37,7 @@ export default function ReceiptScreen() {
     address?: string;
     bankName?: string;
     accountNumber?: string;
+    logoPath?: string;
   } | null>(null);
   const [sale, setSale] = useState<{
     id: string;
@@ -76,6 +75,7 @@ export default function ReceiptScreen() {
               address: profileRow.address ?? undefined,
               bankName: profileRow.bank_name ?? undefined,
               accountNumber: profileRow.account_number ?? undefined,
+              logoPath: profileRow.logo_path ?? undefined,
             }
           : null
       );
@@ -154,6 +154,9 @@ export default function ReceiptScreen() {
           </View>
 
           <View style={styles.profileBlock}>
+            {profile?.logoPath ? (
+              <Image source={{ uri: profile.logoPath }} style={styles.profileLogo} />
+            ) : null}
             <ThemedText style={styles.profileName}>
               {profile?.businessName ?? 'KudiBase Store'}
             </ThemedText>
@@ -171,10 +174,10 @@ export default function ReceiptScreen() {
                 <View style={styles.itemInfo}>
                   <ThemedText style={styles.itemName}>{item.name_snapshot}</ThemedText>
                   <ThemedText style={styles.itemMeta}>
-                    {item.quantity} x {formatNaira(item.unit_price)}
+                    {item.quantity} x {format(item.unit_price)}
                   </ThemedText>
                 </View>
-                <ThemedText style={styles.itemTotal}>{formatNaira(item.line_total)}</ThemedText>
+                <ThemedText style={styles.itemTotal}>{format(item.line_total)}</ThemedText>
               </View>
             ))}
           </View>
@@ -182,15 +185,15 @@ export default function ReceiptScreen() {
           <View style={styles.totalBlock}>
             <View style={styles.totalRow}>
               <ThemedText style={styles.totalLabel}>Total</ThemedText>
-              <ThemedText style={styles.totalValue}>{formatNaira(totals.total)}</ThemedText>
+              <ThemedText style={styles.totalValue}>{format(totals.total)}</ThemedText>
             </View>
             <View style={styles.totalRow}>
               <ThemedText style={styles.totalLabel}>Paid</ThemedText>
-              <ThemedText style={styles.totalValue}>{formatNaira(totals.paid)}</ThemedText>
+              <ThemedText style={styles.totalValue}>{format(totals.paid)}</ThemedText>
             </View>
             <View style={styles.totalRow}>
               <ThemedText style={styles.totalLabel}>Balance due</ThemedText>
-              <ThemedText style={styles.totalValue}>{formatNaira(totals.due)}</ThemedText>
+              <ThemedText style={styles.totalValue}>{format(totals.due)}</ThemedText>
             </View>
           </View>
 
@@ -285,7 +288,12 @@ const styles = StyleSheet.create({
     color: '#555555',
   },
   profileBlock: {
-    gap: 4,
+    gap: 6,
+  },
+  profileLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
   },
   profileName: {
     fontSize: 16,

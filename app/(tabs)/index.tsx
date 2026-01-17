@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCurrency } from '@/hooks/use-currency';
 import { getSalesSummary, initDb } from '@/lib/db';
 
 const quickActions = [
@@ -35,10 +36,6 @@ function getWeekRange() {
   return { startMs: start.getTime(), endMs: end.getTime() };
 }
 
-function formatNaira(amount: number) {
-  return `₦${amount.toLocaleString('en-NG')}`;
-}
-
 const inventoryPulse = [
   { name: 'Rice 25kg', status: 'Low stock • 4 left' },
   { name: '5L Palm Oil', status: 'Healthy • 18 left' },
@@ -48,6 +45,7 @@ const inventoryPulse = [
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const { format } = useCurrency();
   const [stats, setStats] = useState({
     totalSales: 0,
     totalPaid: 0,
@@ -98,18 +96,18 @@ export default function HomeScreen() {
   );
 
   const todayStats = [
-    { label: 'Sales', value: formatNaira(stats.totalSales), note: `${stats.saleCount} transactions` },
-    { label: 'Cash In', value: formatNaira(stats.totalPaid), note: 'Collected' },
-    { label: 'Debts', value: formatNaira(stats.totalDue), note: 'Outstanding' },
+    { label: 'Sales', value: format(stats.totalSales), note: `${stats.saleCount} transactions` },
+    { label: 'Cash In', value: format(stats.totalPaid), note: 'Collected' },
+    { label: 'Debts', value: format(stats.totalDue), note: 'Outstanding' },
   ];
   const weeklyStats = [
     {
       label: 'Week Sales',
-      value: formatNaira(weekStats.totalSales),
+      value: format(weekStats.totalSales),
       note: `${weekStats.saleCount} transactions`,
     },
-    { label: 'Week Cash', value: formatNaira(weekStats.totalPaid), note: 'Collected' },
-    { label: 'Week Debts', value: formatNaira(weekStats.totalDue), note: 'Outstanding' },
+    { label: 'Week Cash', value: format(weekStats.totalPaid), note: 'Collected' },
+    { label: 'Week Debts', value: format(weekStats.totalDue), note: 'Outstanding' },
   ];
 
   return (

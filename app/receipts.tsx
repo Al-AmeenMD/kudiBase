@@ -7,11 +7,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCurrency } from '@/hooks/use-currency';
 import { getSalesList, initDb } from '@/lib/db';
-
-function formatNaira(amount: number) {
-  return `₦${amount.toLocaleString('en-NG')}`;
-}
 
 function formatDateTime(ts: number) {
   return new Date(ts).toLocaleString('en-NG', {
@@ -25,6 +22,7 @@ function formatDateTime(ts: number) {
 export default function ReceiptsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const { format } = useCurrency();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [receipts, setReceipts] = useState<
@@ -151,10 +149,10 @@ export default function ReceiptsScreen() {
                   </ThemedText>
                 </View>
                 <View style={styles.rowRight}>
-                  <ThemedText style={styles.rowValue}>{formatNaira(receipt.subtotal)}</ThemedText>
+                  <ThemedText style={styles.rowValue}>{format(receipt.subtotal)}</ThemedText>
                   {receipt.balance_due > 0 ? (
                     <ThemedText style={[styles.rowMeta, { color: theme.muted }]}>
-                      Due {formatNaira(receipt.balance_due)}
+                      Due {format(receipt.balance_due)}
                     </ThemedText>
                   ) : (
                     <ThemedText style={[styles.rowMeta, { color: theme.muted }]}>Paid</ThemedText>

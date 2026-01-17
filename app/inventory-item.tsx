@@ -6,11 +6,13 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCurrency } from '@/hooks/use-currency';
 import { createItem, getItemById, initDb, updateItem } from '@/lib/db';
 
 export default function InventoryItemScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const { display } = useCurrency();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [name, setName] = useState('');
@@ -95,7 +97,7 @@ export default function InventoryItemScreen() {
             />
           </View>
           <View style={styles.inputBlock}>
-            <ThemedText style={[styles.label, { color: theme.muted }]}>Price (₦)</ThemedText>
+            <ThemedText style={[styles.label, { color: theme.muted }]}>Price ({display})</ThemedText>
             <TextInput
               value={price}
               onChangeText={setPrice}

@@ -6,18 +6,16 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCurrency } from '@/hooks/use-currency';
 import { getSaleById, initDb, recordPayment } from '@/lib/db';
 
 type PaymentMethod = 'Cash' | 'Transfer' | 'POS';
-
-function formatNaira(amount: number) {
-  return `₦${amount.toLocaleString('en-NG')}`;
-}
 
 export default function RecordPaymentScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const router = useRouter();
+  const { format } = useCurrency();
   const { saleId } = useLocalSearchParams<{ saleId?: string }>();
   const [sale, setSale] = useState<{
     id: string;
@@ -108,7 +106,7 @@ export default function RecordPaymentScreen() {
         <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
           <View style={styles.summaryRow}>
             <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Balance due</ThemedText>
-            <ThemedText style={styles.summaryValue}>{formatNaira(maxAmount)}</ThemedText>
+            <ThemedText style={styles.summaryValue}>{format(maxAmount)}</ThemedText>
           </View>
           <View style={styles.inputBlock}>
             <ThemedText style={[styles.label, { color: theme.muted }]}>Amount received</ThemedText>

@@ -16,6 +16,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCurrency } from '@/hooks/use-currency';
 import { getItems, getSalesSummary, initDb, recordSale } from '@/lib/db';
 
 type PaymentMethod = 'Cash' | 'Transfer' | 'POS' | 'Pay Later';
@@ -32,10 +33,6 @@ type CartItem = Item & {
 };
 
 const paymentMethods: PaymentMethod[] = ['Cash', 'Transfer', 'POS', 'Pay Later'];
-
-function formatNaira(amount: number) {
-  return `₦${amount.toLocaleString('en-NG')}`;
-}
 
 function getTodayRange() {
   const start = new Date();
@@ -64,6 +61,7 @@ function formatDateLabel(date: Date) {
 export default function SalesScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const { format } = useCurrency();
   const router = useRouter();
   const scrollRef = useRef<ScrollView | null>(null);
   const cartRef = useRef<View | null>(null);
@@ -425,19 +423,19 @@ export default function SalesScreen() {
             <View style={styles.summaryRow}>
               <View style={styles.summaryBlock}>
                 <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Sales</ThemedText>
-                <ThemedText style={styles.summaryValue}>{formatNaira(summary.totalSales)}</ThemedText>
+                <ThemedText style={styles.summaryValue}>{format(summary.totalSales)}</ThemedText>
                 <ThemedText style={[styles.summaryMeta, { color: theme.muted }]}>
                   {summary.saleCount} transactions
                 </ThemedText>
               </View>
               <View style={styles.summaryBlock}>
                 <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Cash in</ThemedText>
-                <ThemedText style={styles.summaryValue}>{formatNaira(summary.totalPaid)}</ThemedText>
+                <ThemedText style={styles.summaryValue}>{format(summary.totalPaid)}</ThemedText>
                 <ThemedText style={[styles.summaryMeta, { color: theme.muted }]}>Collected</ThemedText>
               </View>
               <View style={styles.summaryBlock}>
                 <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Outstanding</ThemedText>
-                <ThemedText style={styles.summaryValue}>{formatNaira(summary.totalDue)}</ThemedText>
+                <ThemedText style={styles.summaryValue}>{format(summary.totalDue)}</ThemedText>
                 <ThemedText style={[styles.summaryMeta, { color: theme.muted }]}>Pay later</ThemedText>
               </View>
             </View>
@@ -487,6 +485,7 @@ export default function SalesScreen() {
             value={dueDate}
             mode="date"
             display="default"
+            minimumDate={new Date()}
             onChange={(_event, date) => {
               setShowDueDatePicker(false);
               if (date) {
@@ -511,6 +510,7 @@ export default function SalesScreen() {
                   value={dueDate}
                   mode="date"
                   display="spinner"
+                  minimumDate={new Date()}
                   onChange={(_event, date) => {
                     if (date) {
                       const next = new Date(date);
@@ -545,7 +545,7 @@ export default function SalesScreen() {
                   ]}>
                   <ThemedText style={styles.itemName}>{item.name}</ThemedText>
                   <ThemedText style={[styles.itemMeta, { color: theme.muted }]}>
-                    {formatNaira(item.price)} • {item.stock} in stock
+                    {format(item.price)} • {item.stock} in stock
                   </ThemedText>
                   {statusLabel ? (
                     <View style={[styles.statusPill, { backgroundColor: theme.secondary }]}>
@@ -590,7 +590,7 @@ export default function SalesScreen() {
                   <View>
                     <ThemedText style={styles.cartItemName}>{item.name}</ThemedText>
                     <ThemedText style={[styles.cartMeta, { color: theme.muted }]}>
-                      {formatNaira(item.price)} each
+                      {format(item.price)} each
                     </ThemedText>
                   </View>
                   <View style={styles.qtyControl}>
@@ -625,7 +625,7 @@ export default function SalesScreen() {
             )}
             <View style={[styles.totalRow, { borderTopColor: theme.border }]}>
               <ThemedText style={[styles.totalLabel, { color: theme.muted }]}>Total</ThemedText>
-              <ThemedText style={styles.totalValue}>{formatNaira(subtotal)}</ThemedText>
+              <ThemedText style={styles.totalValue}>{format(subtotal)}</ThemedText>
             </View>
           </View>
         </View>
@@ -748,7 +748,7 @@ export default function SalesScreen() {
                   <ThemedText style={[styles.balanceLabel, { color: theme.muted }]}>
                     Balance due
                   </ThemedText>
-                  <ThemedText style={styles.balanceValue}>{formatNaira(balanceDue)}</ThemedText>
+                  <ThemedText style={styles.balanceValue}>{format(balanceDue)}</ThemedText>
                 </View>
               </View>
             )}
@@ -790,10 +790,10 @@ export default function SalesScreen() {
                     </View>
                     <View style={styles.breakdownValues}>
                       <ThemedText style={styles.breakdownValue}>
-                        {formatNaira(row.totalSales)}
+                        {format(row.totalSales)}
                       </ThemedText>
                       <ThemedText style={[styles.breakdownMeta, { color: theme.muted }]}>
-                        {formatNaira(row.totalPaid)} collected
+                        {format(row.totalPaid)} collected
                       </ThemedText>
                     </View>
                   </View>

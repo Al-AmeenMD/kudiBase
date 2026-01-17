@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCurrency } from '@/hooks/use-currency';
 import {
   getBusinessProfile,
   getOutstandingSales,
@@ -13,10 +14,6 @@ import {
   initDb,
   markSalePaid,
 } from '@/lib/db';
-
-function formatNaira(amount: number) {
-  return `₦${amount.toLocaleString('en-NG')}`;
-}
 
 function formatDueDate(dateIso?: string | null) {
   if (!dateIso) {
@@ -46,6 +43,7 @@ function normalizePhone(phone?: string | null) {
 export default function DebtsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const { format } = useCurrency();
   const router = useRouter();
   const [rows, setRows] = useState<
     Array<{
@@ -138,7 +136,7 @@ export default function DebtsScreen() {
     let message = base
       .replace('{customerName}', row.customer_name ?? 'customer')
       .replace('{businessName}', profileData?.businessName ?? 'your business')
-      .replace('{amount}', formatNaira(row.balance_due))
+      .replace('{amount}', format(row.balance_due))
       .replace('{accountName}', profileData?.ownerName ?? 'Account name')
       .replace('{bankName}', profileData?.bankName ?? 'Bank')
       .replace('{accountNumber}', profileData?.accountNumber ?? '0000000000');
@@ -246,11 +244,11 @@ export default function DebtsScreen() {
         <View style={styles.summaryRow}>
           <View style={[styles.summaryCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
             <ThemedText style={styles.summaryLabel}>Total owed</ThemedText>
-            <ThemedText style={styles.summaryValue}>{formatNaira(totalDue)}</ThemedText>
+            <ThemedText style={styles.summaryValue}>{format(totalDue)}</ThemedText>
           </View>
           <View style={[styles.summaryCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
             <ThemedText style={styles.summaryLabel}>Due today</ThemedText>
-            <ThemedText style={styles.summaryValue}>{formatNaira(dueToday)}</ThemedText>
+            <ThemedText style={styles.summaryValue}>{format(dueToday)}</ThemedText>
           </View>
         </View>
 
@@ -281,7 +279,7 @@ export default function DebtsScreen() {
                       </ThemedText>
                     </View>
                     <View style={styles.rowActions}>
-                      <ThemedText style={styles.debtorAmount}>{formatNaira(row.balance_due)}</ThemedText>
+                      <ThemedText style={styles.debtorAmount}>{format(row.balance_due)}</ThemedText>
                       <View style={styles.actionRow}>
                         <Pressable
                           onPress={() => handleRemind(row)}
@@ -319,7 +317,7 @@ export default function DebtsScreen() {
                         paymentHistory[row.id].map((payment) => (
                           <View key={payment.id} style={styles.historyRow}>
                             <ThemedText style={styles.historyText}>
-                              {formatNaira(payment.amount)} • {payment.method}
+                              {format(payment.amount)} • {payment.method}
                             </ThemedText>
                             <ThemedText style={styles.historyMeta}>
                               {new Date(payment.created_at).toLocaleDateString('en-NG', {
