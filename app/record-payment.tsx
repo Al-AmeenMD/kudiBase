@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
@@ -10,6 +19,20 @@ import { useCurrency } from '@/hooks/use-currency';
 import { getSaleById, initDb, recordPayment } from '@/lib/db';
 
 type PaymentMethod = 'Cash' | 'Transfer' | 'POS';
+
+function formatNumberInput(value: string) {
+  const digits = value.replace(/[^\d]/g, '');
+  if (!digits) {
+    return '';
+  }
+  const number = Number(digits);
+  return Number.isFinite(number) ? number.toLocaleString('en-NG') : '';
+}
+
+function parseNumberInput(value: string) {
+  const digits = value.replace(/[^\d]/g, '');
+  return digits ? Number(digits) : 0;
+}
 
 export default function RecordPaymentScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -56,7 +79,7 @@ export default function RecordPaymentScreen() {
     if (!sale) {
       return;
     }
-    const value = Number(amount);
+    const value = parseNumberInput(amount);
     if (!Number.isFinite(value) || value <= 0) {
       Alert.alert('Invalid amount', 'Enter a valid payment amount.');
       return;
@@ -95,84 +118,92 @@ export default function RecordPaymentScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <ThemedText type="title">Record payment</ThemedText>
-          <ThemedText style={[styles.caption, { color: theme.muted }]}>
-            {sale.customer_name ?? `Sale #${sale.sale_number}`}
-          </ThemedText>
-        </View>
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.header}>
+            <ThemedText type="title">Record payment</ThemedText>
+            <ThemedText style={[styles.caption, { color: theme.muted }]}>
+              {sale.customer_name ?? `Sale #${sale.sale_number}`}
+            </ThemedText>
+          </View>
 
-        <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-          <View style={styles.summaryRow}>
-            <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Balance due</ThemedText>
-            <ThemedText style={styles.summaryValue}>{format(maxAmount)}</ThemedText>
-          </View>
-          <View style={styles.inputBlock}>
-            <ThemedText style={[styles.label, { color: theme.muted }]}>Amount received</ThemedText>
-            <TextInput
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor={theme.muted}
-              style={[
-                styles.textInput,
-                { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
-              ]}
-            />
-          </View>
-          <View style={styles.inputBlock}>
-            <ThemedText style={[styles.label, { color: theme.muted }]}>Payment method</ThemedText>
-            <View style={styles.methodRow}>
-              {(['Cash', 'Transfer', 'POS'] as PaymentMethod[]).map((value) => (
-                <Pressable
-                  key={value}
-                  onPress={() => setMethod(value)}
-                  style={[
-                    styles.methodChip,
-                    {
-                      backgroundColor: method === value ? theme.primary : theme.surface,
-                      borderColor: theme.border,
-                    },
-                  ]}>
-                  <ThemedText style={{ color: method === value ? '#FFFFFF' : theme.text }}>
-                    {value}
-                  </ThemedText>
-                </Pressable>
-              ))}
+          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <View style={styles.summaryRow}>
+              <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Balance due</ThemedText>
+              <ThemedText style={styles.summaryValue}>{format(maxAmount)}</ThemedText>
+            </View>
+            <View style={styles.inputBlock}>
+              <ThemedText style={[styles.label, { color: theme.muted }]}>Amount received</ThemedText>
+              <TextInput
+                value={amount}
+                onChangeText={(value) => setAmount(formatNumberInput(value))}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={theme.muted}
+                style={[
+                  styles.textInput,
+                  { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
+                ]}
+              />
+            </View>
+            <View style={styles.inputBlock}>
+              <ThemedText style={[styles.label, { color: theme.muted }]}>Payment method</ThemedText>
+              <View style={styles.methodRow}>
+                {(['Cash', 'Transfer', 'POS'] as PaymentMethod[]).map((value) => (
+                  <Pressable
+                    key={value}
+                    onPress={() => setMethod(value)}
+                    style={[
+                      styles.methodChip,
+                      {
+                        backgroundColor: method === value ? theme.primary : theme.surface,
+                        borderColor: theme.border,
+                      },
+                    ]}>
+                    <ThemedText style={{ color: method === value ? '#FFFFFF' : theme.text }}>
+                      {value}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+            <View style={styles.inputBlock}>
+              <ThemedText style={[styles.label, { color: theme.muted }]}>Note (optional)</ThemedText>
+              <TextInput
+                value={note}
+                onChangeText={setNote}
+                placeholder="Paid part of balance"
+                placeholderTextColor={theme.muted}
+                style={[
+                  styles.textInput,
+                  { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
+                ]}
+              />
             </View>
           </View>
-          <View style={styles.inputBlock}>
-            <ThemedText style={[styles.label, { color: theme.muted }]}>Note (optional)</ThemedText>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="Paid part of balance"
-              placeholderTextColor={theme.muted}
-              style={[
-                styles.textInput,
-                { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
-              ]}
-            />
-          </View>
-        </View>
 
-        <Pressable
-          onPress={handleSave}
-          disabled={saving}
-          style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-          <ThemedText style={styles.primaryButtonText}>
-            {saving ? 'Saving...' : 'Save payment'}
-          </ThemedText>
-        </Pressable>
-      </ScrollView>
+          <Pressable
+            onPress={handleSave}
+            disabled={saving}
+            style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
+            <ThemedText style={styles.primaryButtonText}>
+              {saving ? 'Saving...' : 'Save payment'}
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardWrap: { flex: 1 },
   scrollContent: {
     padding: 20,
     paddingBottom: 40,

@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -7,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getBusinessProfile, initDb, upsertBusinessProfile } from '@/lib/db';
@@ -99,69 +109,78 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top - 8, 0) }]}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <ThemedText style={styles.backLabel}>Back</ThemedText>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backButton, { borderColor: theme.border }]}>
+            <IconSymbol name="chevron.left" size={20} color={theme.primaryDeep} />
           </Pressable>
           <ThemedText type="subtitle">Profile</ThemedText>
-          <View style={styles.headerSpacer} />
         </View>
       </View>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-          <ThemedText style={styles.sectionTitle}>Logo</ThemedText>
-          <View style={styles.logoRow}>
-            {logoUri ? (
-              <Image source={{ uri: logoUri }} style={styles.logoPreview} />
-            ) : (
-              <View style={[styles.logoFallback, { backgroundColor: theme.secondary }]}>
-                <ThemedText style={styles.logoFallbackText}>
-                  {(businessName.trim() || 'K')[0]?.toUpperCase()}
-                </ThemedText>
-              </View>
-            )}
-            <View style={styles.logoActions}>
-              <Pressable
-                onPress={handlePickLogo}
-                style={[styles.secondaryButton, { borderColor: theme.border }]}>
-                <ThemedText style={styles.secondaryButtonText}>Change logo</ThemedText>
-              </Pressable>
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(insets.top, 12) : 0}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <ThemedText style={styles.sectionTitle}>Logo</ThemedText>
+            <View style={styles.logoRow}>
               {logoUri ? (
+                <Image source={{ uri: logoUri }} style={styles.logoPreview} />
+              ) : (
+                <View style={[styles.logoFallback, { backgroundColor: theme.secondary }]}>
+                  <ThemedText style={styles.logoFallbackText}>
+                    {(businessName.trim() || 'K')[0]?.toUpperCase()}
+                  </ThemedText>
+                </View>
+              )}
+              <View style={styles.logoActions}>
                 <Pressable
-                  onPress={() => setLogoUri(null)}
+                  onPress={handlePickLogo}
                   style={[styles.secondaryButton, { borderColor: theme.border }]}>
-                  <ThemedText style={styles.secondaryButtonText}>Remove</ThemedText>
+                  <ThemedText style={styles.secondaryButtonText}>Change logo</ThemedText>
                 </Pressable>
-              ) : null}
+                {logoUri ? (
+                  <Pressable
+                    onPress={() => setLogoUri(null)}
+                    style={[styles.secondaryButton, { borderColor: theme.border }]}>
+                    <ThemedText style={styles.secondaryButtonText}>Remove</ThemedText>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           </View>
-        </View>
 
-        <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-          <InputRow label="Business name" value={businessName} onChangeText={setBusinessName} />
-          <InputRow label="Owner name" value={ownerName} onChangeText={setOwnerName} />
-          <InputRow label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <InputRow label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" />
-          <InputRow label="Address" value={address} onChangeText={setAddress} />
-          <InputRow label="Bank name" value={bankName} onChangeText={setBankName} />
-          <InputRow
-            label="Account number"
-            value={accountNumber}
-            onChangeText={setAccountNumber}
-            keyboardType="number-pad"
-          />
-        </View>
+          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <InputRow label="Business name" value={businessName} onChangeText={setBusinessName} />
+            <InputRow label="Owner name" value={ownerName} onChangeText={setOwnerName} />
+            <InputRow label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+            <InputRow label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" />
+            <InputRow label="Address" value={address} onChangeText={setAddress} />
+            <InputRow label="Bank name" value={bankName} onChangeText={setBankName} />
+            <InputRow
+              label="Account number"
+              value={accountNumber}
+              onChangeText={setAccountNumber}
+              keyboardType="number-pad"
+            />
+          </View>
 
-        <Pressable
-          onPress={handleSave}
-          disabled={saving}
-          style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-          <ThemedText style={styles.primaryButtonText}>
-            {saving ? 'Saving...' : 'Save profile'}
-          </ThemedText>
-        </Pressable>
-      </ScrollView>
+          <Pressable
+            onPress={handleSave}
+            disabled={saving}
+            style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
+            <ThemedText style={styles.primaryButtonText}>
+              {saving ? 'Saving...' : 'Save profile'}
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
@@ -200,6 +219,7 @@ function InputRow({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardWrap: { flex: 1 },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 8,
@@ -207,21 +227,13 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
   },
   backButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#E6E0D3',
-  },
-  backLabel: {
-    fontSize: 12,
-    color: '#0F6A3D',
-  },
-  headerSpacer: {
-    width: 56,
   },
   scrollContent: {
     padding: 20,

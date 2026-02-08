@@ -1,20 +1,36 @@
 {
   "expo": {
-    "name": "kudibase",
+    "name": "KudiBase",
     "slug": "kudibase",
+    "owner": "al_ameenmd",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/kudibase_logo.png",
     "scheme": "kudibase",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.kudibase.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSContactsUsageDescription": "Allow KudiBase to access contacts to add customer details.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.kudibase.app",
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/kudibase_logo.png"
+      },
+      "splash": {
+        "image": "./assets/images/kudibase_logo.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -35,7 +51,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/kudibase_logo.png",
-          "imageWidth": 200,
+          "imageWidth": 240,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
@@ -48,6 +64,22 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "revenuecat": {
+        "androidApiKey": "test_WygnNgBGPGpabFnWDRqitCAvgFm",
+        "iosApiKey": "test_WygnNgBGPGpabFnWDRqitCAvgFm",
+        "entitlement": "kudibase_pro"
+      },
+      "googleDrive": {
+        "androidClientId": "467742816789-oofgn7j0r6driimedn4iohiv35t2l099.apps.googleusercontent.com",
+        "iosClientId": "467742816789-fj7oiijdrqs57rl32uf72762famg0cp2.apps.googleusercontent.com",
+        "webClientId": "467742816789-649vkjh82mfj5mhm7brvvpep2gv6umgb.apps.googleusercontent.com"
+      },
+      "router": {},
+      "eas": {
+        "projectId": "32b15788-bf97-4de7-9287-c43d1ad11002"
+      }
     }
   }
 }

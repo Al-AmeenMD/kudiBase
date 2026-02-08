@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCurrency } from '@/hooks/use-currency';
@@ -33,6 +43,7 @@ export default function ReceiptsScreen() {
       subtotal: number;
       amount_paid: number;
       balance_due: number;
+      customer_name: string | null;
       created_at: number;
     }>
   >([]);
@@ -71,7 +82,8 @@ export default function ReceiptsScreen() {
       list = list.filter((row) => {
         const numberMatch = String(row.sale_number).includes(term);
         const methodMatch = row.payment_method.toLowerCase().includes(term);
-        return numberMatch || methodMatch;
+        const nameMatch = row.customer_name?.toLowerCase().includes(term);
+        return numberMatch || methodMatch || Boolean(nameMatch);
       });
     }
     return list;
@@ -79,20 +91,28 @@ export default function ReceiptsScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top - 8, 0) }]}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <ThemedText style={styles.backLabel}>Back</ThemedText>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backButton, { borderColor: theme.border }]}>
+            <IconSymbol name="chevron.left" size={20} color={theme.primaryDeep} />
           </Pressable>
           <View style={styles.headerTitle}>
             <ThemedText type="subtitle">Receipts</ThemedText>
             <ThemedText style={styles.headerMeta}>Recent sales</ThemedText>
           </View>
-          <View style={styles.headerSpacer} />
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(insets.top, 12) : 0}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
         <View style={styles.filterBlock}>
           <TextInput
             value={receiptSearch}
@@ -145,7 +165,8 @@ export default function ReceiptsScreen() {
                     Receipt #{receipt.sale_number}
                   </ThemedText>
                   <ThemedText style={[styles.rowMeta, { color: theme.muted }]}>
-                    {formatDateTime(receipt.created_at)} • {receipt.payment_method}
+                    {(receipt.customer_name ?? 'Walk-in customer')} • {receipt.payment_method} •{' '}
+                    {formatDateTime(receipt.created_at)}
                   </ThemedText>
                 </View>
                 <View style={styles.rowRight}>
@@ -162,13 +183,15 @@ export default function ReceiptsScreen() {
             ))}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardWrap: { flex: 1 },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 12,
@@ -176,7 +199,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
   },
   backButton: {
     paddingHorizontal: 10,
@@ -185,21 +208,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E6E0D3',
   },
-  backLabel: {
-    fontSize: 12,
-    color: '#0F6A3D',
-  },
   headerTitle: {
     flex: 1,
-    alignItems: 'center',
     gap: 4,
   },
   headerMeta: {
     fontSize: 12,
     color: '#6B7280',
-  },
-  headerSpacer: {
-    width: 56,
   },
   scrollContent: {
     padding: 20,

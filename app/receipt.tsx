@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCurrency } from '@/hooks/use-currency';
@@ -131,44 +132,67 @@ export default function ReceiptScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top - 8, 0) }]}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <ThemedText style={styles.backLabel}>Back</ThemedText>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backButton, { borderColor: theme.border }]}>
+            <IconSymbol name="chevron.left" size={20} color={theme.primaryDeep} />
           </Pressable>
           <View style={styles.headerTitle}>
             <ThemedText type="subtitle">Receipt</ThemedText>
             <ThemedText style={styles.headerMeta}>Share your receipt</ThemedText>
           </View>
-          <View style={styles.headerSpacer} />
         </View>
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <ViewShot ref={receiptRef} style={styles.receiptCard} options={{ format: 'png', quality: 1 }}>
-          <View style={styles.receiptHeader}>
-            <ThemedText type="title" style={styles.receiptTitle}>
-              Receipt
-            </ThemedText>
-            <ThemedText style={styles.receiptMeta}>No. #{sale.sale_number}</ThemedText>
-            <ThemedText style={styles.receiptMeta}>{formatDateTime(sale.created_at)}</ThemedText>
-          </View>
-
-          <View style={styles.profileBlock}>
-            {profile?.logoPath ? (
-              <Image source={{ uri: profile.logoPath }} style={styles.profileLogo} />
-            ) : null}
-            <ThemedText style={styles.profileName}>
-              {profile?.businessName ?? 'KudiBase Store'}
-            </ThemedText>
-            {profile?.address ? (
-              <ThemedText style={styles.profileMeta}>{profile.address}</ThemedText>
-            ) : null}
-            {profile?.phone ? (
-              <ThemedText style={styles.profileMeta}>{profile.phone}</ThemedText>
-            ) : null}
+          <View style={styles.receiptTop}>
+            <View style={styles.receiptBrandRow}>
+              {profile?.logoPath ? (
+                <Image source={{ uri: profile.logoPath }} style={styles.profileLogo} />
+              ) : (
+                <View style={styles.logoFallback}>
+                  <ThemedText style={styles.logoFallbackText}>
+                    {(profile?.businessName ?? 'K')[0]?.toUpperCase()}
+                  </ThemedText>
+                </View>
+              )}
+              <View style={styles.brandCopy}>
+                <ThemedText style={styles.profileName}>
+                  {profile?.businessName ?? 'KudiBase Store'}
+                </ThemedText>
+                {profile?.address ? (
+                  <ThemedText style={styles.profileMeta}>{profile.address}</ThemedText>
+                ) : null}
+                {profile?.phone ? (
+                  <ThemedText style={styles.profileMeta}>{profile.phone}</ThemedText>
+                ) : null}
+              </View>
+            </View>
+            <View style={styles.receiptMetaRow}>
+              <View style={styles.receiptMetaColumn}>
+                <ThemedText style={styles.receiptMetaLabel}>Receipt No.</ThemedText>
+                <ThemedText style={styles.receiptMetaValue}>#{sale.sale_number}</ThemedText>
+              </View>
+              <View style={styles.receiptMetaColumn}>
+                <ThemedText style={styles.receiptMetaLabel}>Date</ThemedText>
+                <ThemedText style={styles.receiptMetaValue}>{formatDateTime(sale.created_at)}</ThemedText>
+              </View>
+              <View style={styles.receiptMetaColumn}>
+                <ThemedText style={styles.receiptMetaLabel}>Customer name</ThemedText>
+                <ThemedText style={styles.receiptMetaValue}>
+                  {sale.customer_name ?? 'Walk-in customer'}
+                </ThemedText>
+              </View>
+            </View>
           </View>
 
           <View style={styles.itemsBlock}>
+            <View style={styles.itemsHeader}>
+              <ThemedText style={styles.itemsHeaderText}>Items</ThemedText>
+              <ThemedText style={styles.itemsHeaderText}>Total</ThemedText>
+            </View>
             {items.map((item) => (
               <View key={item.id} style={styles.itemRow}>
                 <View style={styles.itemInfo}>
@@ -191,19 +215,26 @@ export default function ReceiptScreen() {
               <ThemedText style={styles.totalLabel}>Paid</ThemedText>
               <ThemedText style={styles.totalValue}>{format(totals.paid)}</ThemedText>
             </View>
-            <View style={styles.totalRow}>
+            <View style={[styles.totalRow, styles.totalEmphasis]}>
               <ThemedText style={styles.totalLabel}>Balance due</ThemedText>
               <ThemedText style={styles.totalValue}>{format(totals.due)}</ThemedText>
             </View>
           </View>
 
           <View style={styles.footerBlock}>
-            <ThemedText style={styles.footerMeta}>Payment method: {sale.payment_method}</ThemedText>
-            {profile?.bankName && profile?.accountNumber ? (
-              <ThemedText style={styles.footerMeta}>
-                Pay to: {profile.bankName} {profile.accountNumber}
-              </ThemedText>
+            <View style={styles.footerRow}>
+              <ThemedText style={styles.footerMeta}>Payment method</ThemedText>
+              <ThemedText style={styles.footerValue}>{sale.payment_method}</ThemedText>
+            </View>
+            {totals.due > 0 && profile?.bankName && profile?.accountNumber ? (
+              <View style={styles.footerRow}>
+                <ThemedText style={styles.footerMeta}>Pay to</ThemedText>
+                <ThemedText style={styles.footerValue}>
+                  {profile.bankName} {profile.accountNumber}
+                </ThemedText>
+              </View>
             ) : null}
+            <View style={styles.footerDivider} />
             <ThemedText style={styles.footerThank}>Thank you for patronising us!</ThemedText>
             <View style={styles.footerBrandRow}>
               <Image source={require('@/assets/images/kudibase_logo.png')} style={styles.footerLogo} />
@@ -235,30 +266,21 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
   },
   backButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#E6E0D3',
-  },
-  backLabel: {
-    fontSize: 12,
-    color: '#0F6A3D',
   },
   headerTitle: {
     flex: 1,
-    alignItems: 'center',
     gap: 4,
   },
   headerMeta: {
     fontSize: 12,
     color: '#6B7280',
-  },
-  headerSpacer: {
-    width: 56,
   },
   scrollContent: {
     padding: 20,
@@ -277,23 +299,57 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 16,
   },
-  receiptHeader: {
-    gap: 4,
+  receiptTop: {
+    gap: 12,
   },
-  receiptTitle: {
-    color: '#111111',
+  receiptBrandRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
   },
-  receiptMeta: {
+  brandCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  receiptMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#EFE7DA',
+  },
+  receiptMetaColumn: {
+    minWidth: 110,
+    flexGrow: 1,
+  },
+  receiptMetaLabel: {
+    fontSize: 10,
+    color: '#777777',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  receiptMetaValue: {
     fontSize: 12,
-    color: '#555555',
-  },
-  profileBlock: {
-    gap: 6,
+    color: '#222222',
   },
   profileLogo: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+  },
+  logoFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F4E6C1',
+  },
+  logoFallbackText: {
+    fontSize: 16,
+    color: '#0B4F2F',
   },
   profileName: {
     fontSize: 16,
@@ -305,6 +361,19 @@ const styles = StyleSheet.create({
   },
   itemsBlock: {
     gap: 10,
+  },
+  itemsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EFE7DA',
+  },
+  itemsHeaderText: {
+    fontSize: 11,
+    color: '#777777',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   itemRow: {
     flexDirection: 'row',
@@ -345,15 +414,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#111111',
   },
+  totalEmphasis: {
+    paddingTop: 6,
+    marginTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#EFE7DA',
+  },
   footerBlock: {
     borderTopWidth: 1,
     borderTopColor: '#E6E0D3',
     paddingTop: 12,
     gap: 6,
   },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   footerMeta: {
     fontSize: 12,
-    color: '#555555',
+    color: '#777777',
+  },
+  footerValue: {
+    fontSize: 12,
+    color: '#111111',
+  },
+  footerDivider: {
+    height: 1,
+    backgroundColor: '#EFE7DA',
+    marginTop: 6,
+    marginBottom: 2,
   },
   footerThank: {
     fontSize: 13,

@@ -1,9 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { adjustStock, getItems, initDb } from '@/lib/db';
@@ -20,6 +31,7 @@ export default function StockAdjustScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Item[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('in');
@@ -85,15 +97,31 @@ export default function StockAdjustScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <ThemedText type="title">Stock In/Out</ThemedText>
-          <ThemedText style={[styles.caption, { color: theme.muted }]}>
-            Record manual stock adjustments.
-          </ThemedText>
-        </View>
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(insets.top, 12) : 0}>
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingTop: Math.max(insets.top - 8, 0) }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.header}>
+            <View style={styles.headerRow}>
+              <Pressable
+                onPress={() => router.back()}
+                style={[styles.backButton, { borderColor: theme.border }]}>
+                <IconSymbol name="chevron.left" size={20} color={theme.primaryDeep} />
+              </Pressable>
+              <View style={styles.headerText}>
+                <ThemedText type="title">Stock In/Out</ThemedText>
+                <ThemedText style={[styles.caption, { color: theme.muted }]}>
+                  Record manual stock adjustments.
+                </ThemedText>
+              </View>
+            </View>
+          </View>
 
-        <View style={styles.section}>
+          <View style={styles.section}>
           <ThemedText type="subtitle">Choose item</ThemedText>
           <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
             {items.map((item, index) => {
@@ -172,27 +200,41 @@ export default function StockAdjustScreen() {
           </View>
         </View>
 
-        <Pressable
-          onPress={handleSave}
-          disabled={loading}
-          style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-          <ThemedText style={styles.primaryButtonText}>
-            {loading ? 'Saving...' : 'Save adjustment'}
-          </ThemedText>
-        </Pressable>
-      </ScrollView>
+          <Pressable
+            onPress={handleSave}
+            disabled={loading}
+            style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
+            <ThemedText style={styles.primaryButtonText}>
+              {loading ? 'Saving...' : 'Save adjustment'}
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardWrap: { flex: 1 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
   scrollContent: {
     padding: 20,
     paddingBottom: 40,
     gap: 24,
   },
   header: { gap: 8 },
+  headerText: { gap: 4 },
   caption: { fontSize: 14 },
   section: { gap: 12 },
   card: {

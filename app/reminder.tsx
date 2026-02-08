@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCurrency } from '@/hooks/use-currency';
@@ -96,54 +106,64 @@ export default function ReminderScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top - 8, 0) }]}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <ThemedText style={styles.backLabel}>Back</ThemedText>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backButton, { borderColor: theme.border }]}>
+            <IconSymbol name="chevron.left" size={20} color={theme.primaryDeep} />
           </Pressable>
           <ThemedText type="subtitle">Reminder message</ThemedText>
-          <View style={styles.headerSpacer} />
         </View>
       </View>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-          <ThemedText style={styles.sectionTitle}>WhatsApp reminder template</ThemedText>
-          <TextInput
-            value={template}
-            onChangeText={setTemplate}
-            multiline
-            placeholder={defaultTemplate}
-            placeholderTextColor={theme.muted}
-            style={[
-              styles.textArea,
-              { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
-            ]}
-          />
-          <ThemedText style={styles.hint}>
-            Use placeholders: {`{customerName}`} {`{amount}`} {`{businessName}`} {`{accountName}`}{' '}
-            {`{bankName}`} {`{accountNumber}`}
-          </ThemedText>
-          <View style={[styles.previewBox, { borderColor: theme.border, backgroundColor: theme.secondary }]}>
-            <ThemedText style={styles.previewLabel}>Preview</ThemedText>
-            <ThemedText style={styles.previewText}>{preview}</ThemedText>
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(insets.top, 12) : 0}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <ThemedText style={styles.sectionTitle}>WhatsApp reminder template</ThemedText>
+            <TextInput
+              value={template}
+              onChangeText={setTemplate}
+              multiline
+              placeholder={defaultTemplate}
+              placeholderTextColor={theme.muted}
+              style={[
+                styles.textArea,
+                { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
+              ]}
+            />
+            <ThemedText style={styles.hint}>
+              Use placeholders: {`{customerName}`} {`{amount}`} {`{businessName}`} {`{accountName}`}{' '}
+              {`{bankName}`} {`{accountNumber}`}
+            </ThemedText>
+            <View style={[styles.previewBox, { borderColor: theme.border, backgroundColor: theme.secondary }]}>
+              <ThemedText style={styles.previewLabel}>Preview</ThemedText>
+              <ThemedText style={styles.previewText}>{preview}</ThemedText>
+            </View>
           </View>
-        </View>
 
-        <Pressable
-          onPress={handleSave}
-          disabled={saving}
-          style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-          <ThemedText style={styles.primaryButtonText}>
-            {saving ? 'Saving...' : 'Save reminder'}
-          </ThemedText>
-        </Pressable>
-      </ScrollView>
+          <Pressable
+            onPress={handleSave}
+            disabled={saving}
+            style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
+            <ThemedText style={styles.primaryButtonText}>
+              {saving ? 'Saving...' : 'Save reminder'}
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardWrap: { flex: 1 },
   header: {
     paddingHorizontal: 20,
     paddingBottom: 8,
@@ -151,21 +171,13 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
   },
   backButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#E6E0D3',
-  },
-  backLabel: {
-    fontSize: 12,
-    color: '#0F6A3D',
-  },
-  headerSpacer: {
-    width: 56,
   },
   scrollContent: {
     padding: 20,

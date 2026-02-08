@@ -1,6 +1,6 @@
-import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -8,68 +8,63 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCurrency } from '@/hooks/use-currency';
 import {
+  getAppSetting,
   getBusinessProfile,
   getOutstandingSales,
   getPaymentsBySale,
   initDb,
   markSalePaid,
+  setAppSetting,
 } from '@/lib/db';
+import { subscribeDbEvents } from '@/lib/db/events';
+import { isPremium } from '@/lib/subscription';
 
-function formatDueDate(dateIso?: string | null) {
-  if (!dateIso) {
-    return 'No due date';
-  }
-  const date = new Date(dateIso);
-  return date.toLocaleDateString('en-NG', { day: '2-digit', month: 'short' });
-}
-
-function normalizePhone(phone?: string | null) {
-  if (!phone) {
-    return null;
-  }
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) {
-    return null;
-  }
-  if (digits.startsWith('0')) {
-    return `234${digits.slice(1)}`;
-  }
-  if (digits.startsWith('234')) {
-    return digits;
-  }
-  return `234${digits}`;
-}
+import type { AutoReminderSettings, BusinessProfile, Debt, PaymentRecord } from '@/components/debts';
+import {
+  AutoReminderPrompt,
+  AutoRemindersSection,
+  DebtorCard,
+  DebtsSummaryCard,
+  ReminderModal,
+  buildReminderMessage,
+  getReminderKey,
+  normalizePhone,
+} from '@/components/debts';
 
 export default function DebtsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const { format } = useCurrency();
   const router = useRouter();
-  const [rows, setRows] = useState<
-    Array<{
-      id: string;
-      sale_number: number;
-      customer_name: string | null;
-      customer_phone: string | null;
-      balance_due: number;
-      due_date: string | null;
-      created_at: number;
-    }>
-  >([]);
-  const [profile, setProfile] = useState<{
-    businessName: string;
-    ownerName?: string;
-    bankName?: string;
-    accountNumber?: string;
-    reminderTemplate?: string | null;
-  } | null>(null);
+
+  // Data state
+  const [premium, setPremium] = useState(false);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [profile, setProfile] = useState<BusinessProfile | null>(null);
+  const [paymentHistory, setPaymentHistory] = useState<Record<string, PaymentRecord[]>>({});
+
+  // UI state
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
-  const [paymentHistory, setPaymentHistory] = useState<
-    Record<string, Array<{ id: string; amount: number; method: string; note: string | null; created_at: number }>>
-  >({});
   const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
-  const [remindTarget, setRemindTarget] = useState<(typeof rows)[number] | null>(null);
+
+  // Reminder modal state
+  const [remindTarget, setRemindTarget] = useState<Debt | null>(null);
   const [remindText, setRemindText] = useState('');
+
+  // Auto reminder state
+  const [autoSettings, setAutoSettings] = useState<AutoReminderSettings>({
+    enabled: false,
+    frequency: 'daily',
+    time: '09:00',
+    weekday: 1,
+  });
+  const [autoPromptVisible, setAutoPromptVisible] = useState(false);
+  const [autoTargets, setAutoTargets] = useState<Debt[]>([]);
+  const loadDebtsRef = useRef(loadDebts);
+
+  useEffect(() => {
+    loadDebtsRef.current = loadDebts;
+  }, [loadDebts]);
 
   const loadDebts = useCallback(async () => {
     await initDb();
@@ -77,19 +72,61 @@ export default function DebtsScreen() {
       getOutstandingSales(),
       getBusinessProfile(),
     ]);
-    setRows(outstanding);
+    setDebts(
+      outstanding.map((row) => ({
+        id: row.id,
+        saleNumber: row.sale_number,
+        customerName: row.customer_name,
+        customerPhone: row.customer_phone,
+        balanceDue: row.balance_due,
+        dueDate: row.due_date,
+        createdAt: row.created_at,
+      }))
+    );
     setPaymentHistory({});
+    let premiumStatus = false;
+    try {
+      premiumStatus = await isPremium();
+    } catch {
+      premiumStatus = false;
+    }
+    setPremium(premiumStatus);
     setProfile(
       profileRow
         ? {
-            businessName: profileRow.business_name,
-            ownerName: profileRow.owner_name ?? undefined,
-            bankName: profileRow.bank_name ?? undefined,
-            accountNumber: profileRow.account_number ?? undefined,
-            reminderTemplate: profileRow.reminder_template ?? null,
-          }
+          businessName: profileRow.business_name,
+          ownerName: profileRow.owner_name ?? undefined,
+          bankName: profileRow.bank_name ?? undefined,
+          accountNumber: profileRow.account_number ?? undefined,
+          reminderTemplate: profileRow.reminder_template ?? null,
+        }
         : null
     );
+  }, []);
+
+  useEffect(() => {
+    isPremium()
+      .then(setPremium)
+      .catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    async function loadAutoSettings() {
+      await initDb();
+      const [enabled, frequency, time, weekday] = await Promise.all([
+        getAppSetting('auto_reminders_enabled'),
+        getAppSetting('auto_reminders_frequency'),
+        getAppSetting('auto_reminders_time'),
+        getAppSetting('auto_reminders_weekday'),
+      ]);
+      setAutoSettings({
+        enabled: enabled === 'true',
+        frequency: frequency === 'weekly' ? 'weekly' : 'daily',
+        time: time === '13:00' || time === '18:00' ? time : '09:00',
+        weekday: Number(weekday ?? 1) || 1,
+      });
+    }
+    loadAutoSettings().catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -108,83 +145,86 @@ export default function DebtsScreen() {
     }, [loadDebts])
   );
 
-  const totalDue = useMemo(() => rows.reduce((sum, row) => sum + row.balance_due, 0), [rows]);
+  useEffect(() => {
+    const unsubscribe = subscribeDbEvents((event) => {
+      if (event !== 'sales') return;
+      loadDebtsRef.current?.().catch(() => {});
+    });
+    return unsubscribe;
+  }, []);
+
+  // Computed values
+  const totalDue = useMemo(() => debts.reduce((sum, d) => sum + d.balanceDue, 0), [debts]);
   const dueToday = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return rows.reduce((sum, row) => {
-      if (!row.due_date) {
-        return sum;
-      }
-      const due = new Date(row.due_date);
+    return debts.reduce((sum, d) => {
+      if (!d.dueDate) return sum;
+      const due = new Date(d.dueDate);
       due.setHours(0, 0, 0, 0);
-      return due.getTime() === today.getTime() ? sum + row.balance_due : sum;
+      return due.getTime() === today.getTime() ? sum + d.balanceDue : sum;
     }, 0);
-  }, [rows]);
+  }, [debts]);
 
-  function buildMessage(row: (typeof rows)[number]) {
-    return buildMessageWithProfile(row, profile);
-  }
+  // Auto reminder prompt trigger
+  useEffect(() => {
+    async function maybePromptAutoReminders() {
+      if (!premium || !autoSettings.enabled || debts.length === 0) return;
 
-  function buildMessageWithProfile(
-    row: (typeof rows)[number],
-    profileData: typeof profile
-  ) {
-    const base =
-      profileData?.reminderTemplate ??
-      'Hello {customerName}, this is {businessName}. You have an outstanding balance of {amount}. Please pay to {accountName} ({bankName} {accountNumber}). Thank you.';
-    let message = base
-      .replace('{customerName}', row.customer_name ?? 'customer')
-      .replace('{businessName}', profileData?.businessName ?? 'your business')
-      .replace('{amount}', format(row.balance_due))
-      .replace('{accountName}', profileData?.ownerName ?? 'Account name')
-      .replace('{bankName}', profileData?.bankName ?? 'Bank')
-      .replace('{accountNumber}', profileData?.accountNumber ?? '0000000000');
-    const hasBusinessPlaceholder = base.includes('{businessName}');
-    const hasAccountPlaceholders =
-      base.includes('{accountName}') || base.includes('{bankName}') || base.includes('{accountNumber}');
-    if (!hasBusinessPlaceholder && profileData?.businessName) {
-      message = `${message}\nFrom ${profileData.businessName}.`;
+      const now = new Date();
+      const [hour, minute] = autoSettings.time.split(':').map((v) => Number(v));
+      const scheduled = new Date(now);
+      scheduled.setHours(hour || 0, minute || 0, 0, 0);
+
+      const dueItems = debts.filter((d) => {
+        if (!d.dueDate) return true;
+        const due = new Date(d.dueDate);
+        due.setHours(0, 0, 0, 0);
+        const todayDate = new Date(now);
+        todayDate.setHours(0, 0, 0, 0);
+        return due.getTime() <= todayDate.getTime();
+      });
+
+      if (!dueItems.length) return;
+      if (autoSettings.frequency === 'weekly' && now.getDay() !== autoSettings.weekday) return;
+      if (now.getTime() < scheduled.getTime()) return;
+
+      const lastKey = await getAppSetting('auto_reminders_last_key');
+      const nextKey = getReminderKey(now, autoSettings.frequency);
+      if (lastKey === nextKey) return;
+
+      await setAppSetting('auto_reminders_last_key', nextKey);
+      setAutoTargets(dueItems);
+      setAutoPromptVisible(true);
     }
-    if (
-      !hasAccountPlaceholders &&
-      profileData?.ownerName &&
-      profileData?.bankName &&
-      profileData?.accountNumber
-    ) {
-      message = `${message}\nPay to: ${profileData.ownerName} (${profileData.bankName} ${profileData.accountNumber}).`;
-    }
-    return message;
-  }
+    maybePromptAutoReminders().catch(() => { });
+  }, [autoSettings, premium, debts]);
 
-  async function handleRemind(row: (typeof rows)[number]) {
-    const phone = normalizePhone(row.customer_phone);
+  // Handlers
+  async function handleRemind(debt: Debt) {
+    const phone = normalizePhone(debt.customerPhone);
     if (!phone) {
       Alert.alert('Missing phone', 'Add a phone number to send a reminder.');
       return;
     }
     const latestProfileRow = await getBusinessProfile();
-    const latestProfile = latestProfileRow
+    const latestProfile: BusinessProfile | null = latestProfileRow
       ? {
-          businessName: latestProfileRow.business_name,
-          ownerName: latestProfileRow.owner_name ?? undefined,
-          bankName: latestProfileRow.bank_name ?? undefined,
-          accountNumber: latestProfileRow.account_number ?? undefined,
-          reminderTemplate: latestProfileRow.reminder_template ?? null,
-        }
+        businessName: latestProfileRow.business_name,
+        ownerName: latestProfileRow.owner_name ?? undefined,
+        bankName: latestProfileRow.bank_name ?? undefined,
+        accountNumber: latestProfileRow.account_number ?? undefined,
+        reminderTemplate: latestProfileRow.reminder_template ?? null,
+      }
       : null;
-    if (latestProfile) {
-      setProfile(latestProfile);
-    }
-    setRemindTarget(row);
-    setRemindText(buildMessageWithProfile(row, latestProfile ?? profile));
+    if (latestProfile) setProfile(latestProfile);
+    setRemindTarget(debt);
+    setRemindText(buildReminderMessage(debt, latestProfile ?? profile, format));
   }
 
   async function sendReminder() {
-    if (!remindTarget) {
-      return;
-    }
-    const phone = normalizePhone(remindTarget.customer_phone);
+    if (!remindTarget) return;
+    const phone = normalizePhone(remindTarget.customerPhone);
     if (!phone) {
       Alert.alert('Missing phone', 'Add a phone number to send a reminder.');
       return;
@@ -200,29 +240,87 @@ export default function DebtsScreen() {
     await Linking.openURL(url);
   }
 
-  async function toggleHistory(rowId: string) {
-    if (expandedSaleId === rowId) {
+  async function sendAutoReminder(debt: Debt) {
+    const phone = normalizePhone(debt.customerPhone);
+    if (!phone) {
+      Alert.alert('Missing phone', 'Add a phone number to send a reminder.');
+      return;
+    }
+    const message = encodeURIComponent(buildReminderMessage(debt, profile, format));
+    const url = `https://wa.me/${phone}?text=${message}`;
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      Alert.alert('WhatsApp unavailable', 'WhatsApp is not available on this device.');
+      return;
+    }
+    await Linking.openURL(url);
+  }
+
+  async function handleToggleAutoReminders(next: boolean) {
+    if (!premium && next) {
+      router.push('/premium');
+      return;
+    }
+    setAutoSettings((prev) => ({ ...prev, enabled: next }));
+    await setAppSetting('auto_reminders_enabled', next ? 'true' : 'false');
+  }
+
+  async function handleSelectFrequency(next: 'daily' | 'weekly') {
+    setAutoSettings((prev) => ({ ...prev, frequency: next }));
+    await setAppSetting('auto_reminders_frequency', next);
+  }
+
+  async function handleSelectTime(next: '09:00' | '13:00' | '18:00') {
+    setAutoSettings((prev) => ({ ...prev, time: next }));
+    await setAppSetting('auto_reminders_time', next);
+  }
+
+  async function handleSelectWeekday(next: number) {
+    setAutoSettings((prev) => ({ ...prev, weekday: next }));
+    await setAppSetting('auto_reminders_weekday', String(next));
+  }
+
+  async function toggleHistory(debtId: string) {
+    if (expandedSaleId === debtId) {
       setExpandedSaleId(null);
       return;
     }
-    setExpandedSaleId(rowId);
+    setExpandedSaleId(debtId);
     try {
-      const history = await getPaymentsBySale(rowId);
-      setPaymentHistory((prev) => ({ ...prev, [rowId]: history }));
+      const history = await getPaymentsBySale(debtId);
+      setPaymentHistory((prev) => ({
+        ...prev,
+        [debtId]: history.map((p) => ({
+          id: p.id,
+          amount: p.amount,
+          method: p.method,
+          note: p.note,
+          createdAt: p.created_at,
+        })),
+      }));
     } catch (error) {
       Alert.alert('Load error', 'Unable to load payment history.');
       console.error(error);
     }
   }
 
-  async function handleMarkPaid(rowId: string) {
+  async function handleMarkPaid(debtId: string) {
     try {
-      setMarkingPaidId(rowId);
-      await markSalePaid(rowId, 'Cash');
+      setMarkingPaidId(debtId);
+      await markSalePaid(debtId, 'Cash');
       await loadDebts();
-      const history = await getPaymentsBySale(rowId);
-      setPaymentHistory((prev) => ({ ...prev, [rowId]: history }));
-      setExpandedSaleId(rowId);
+      const history = await getPaymentsBySale(debtId);
+      setPaymentHistory((prev) => ({
+        ...prev,
+        [debtId]: history.map((p) => ({
+          id: p.id,
+          amount: p.amount,
+          method: p.method,
+          note: p.note,
+          createdAt: p.created_at,
+        })),
+      }));
+      setExpandedSaleId(debtId);
     } catch (error) {
       Alert.alert('Update failed', 'Unable to mark as paid.');
       console.error(error);
@@ -236,260 +334,96 @@ export default function DebtsScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <ThemedText type="title">Debts</ThemedText>
-          <ThemedText style={styles.caption}>
-            Track who owes you and send gentle reminders.
-          </ThemedText>
+          <ThemedText style={styles.caption}>Track who owes you and send gentle reminders.</ThemedText>
         </View>
 
-        <View style={styles.summaryRow}>
-          <View style={[styles.summaryCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            <ThemedText style={styles.summaryLabel}>Total owed</ThemedText>
-            <ThemedText style={styles.summaryValue}>{format(totalDue)}</ThemedText>
-          </View>
-          <View style={[styles.summaryCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            <ThemedText style={styles.summaryLabel}>Due today</ThemedText>
-            <ThemedText style={styles.summaryValue}>{format(dueToday)}</ThemedText>
-          </View>
-        </View>
+        <DebtsSummaryCard totalDue={totalDue} dueToday={dueToday} formatCurrency={format} />
+
+        <AutoRemindersSection
+          premium={premium}
+          settings={autoSettings}
+          onToggle={handleToggleAutoReminders}
+          onSelectFrequency={handleSelectFrequency}
+          onSelectTime={handleSelectTime}
+          onSelectWeekday={handleSelectWeekday}
+        />
 
         <View style={styles.section}>
           <ThemedText type="subtitle">Debtor list</ThemedText>
           <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            {rows.length === 0 ? (
+            {debts.length === 0 ? (
               <View style={styles.emptyState}>
                 <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
                   No outstanding debts.
                 </ThemedText>
               </View>
             ) : (
-              rows.map((row, index) => (
-                <View
-                  key={row.id}
-                  style={[
-                    styles.row,
-                    index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
-                  ]}>
-                  <View style={styles.rowTop}>
-                    <View style={styles.rowBody}>
-                      <ThemedText style={styles.debtorName}>
-                        {row.customer_name ?? `Sale #${row.sale_number}`}
-                      </ThemedText>
-                      <ThemedText style={styles.debtorMeta}>
-                        Due {formatDueDate(row.due_date)}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.rowActions}>
-                      <ThemedText style={styles.debtorAmount}>{format(row.balance_due)}</ThemedText>
-                      <View style={styles.actionRow}>
-                        <Pressable
-                          onPress={() => handleRemind(row)}
-                          style={[styles.remindButton, { backgroundColor: theme.primary }]}>
-                          <ThemedText style={styles.remindText}>Remind</ThemedText>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => handleMarkPaid(row.id)}
-                          disabled={markingPaidId === row.id}
-                          style={[styles.payButton, { borderColor: theme.border }]}>
-                          <ThemedText style={styles.payText}>
-                            {markingPaidId === row.id ? 'Saving...' : 'Mark paid'}
-                          </ThemedText>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => router.push({ pathname: '/record-payment', params: { saleId: row.id } })}
-                          style={[styles.payButton, { borderColor: theme.border }]}>
-                          <ThemedText style={styles.payText}>Record</ThemedText>
-                        </Pressable>
-                      </View>
-                      <Pressable onPress={() => toggleHistory(row.id)}>
-                        <ThemedText style={styles.historyLink}>
-                          {expandedSaleId === row.id ? 'Hide payments' : 'View payments'}
-                        </ThemedText>
-                      </Pressable>
-                    </View>
-                  </View>
-                  {expandedSaleId === row.id && (
-                    <View
-                      style={[
-                        styles.historyBlock,
-                        { borderColor: theme.border, backgroundColor: theme.surface },
-                      ]}>
-                      {paymentHistory[row.id]?.length ? (
-                        paymentHistory[row.id].map((payment) => (
-                          <View key={payment.id} style={styles.historyRow}>
-                            <ThemedText style={styles.historyText}>
-                              {format(payment.amount)} • {payment.method}
-                            </ThemedText>
-                            <ThemedText style={styles.historyMeta}>
-                              {new Date(payment.created_at).toLocaleDateString('en-NG', {
-                                day: '2-digit',
-                                month: 'short',
-                              })}
-                            </ThemedText>
-                          </View>
-                        ))
-                      ) : (
-                        <ThemedText style={styles.historyMeta}>No payments recorded.</ThemedText>
-                      )}
-                    </View>
-                  )}
-                </View>
+              debts.map((debt, index) => (
+                <DebtorCard
+                  key={debt.id}
+                  debt={debt}
+                  expanded={expandedSaleId === debt.id}
+                  paymentHistory={paymentHistory[debt.id] ?? []}
+                  markingPaid={markingPaidId === debt.id}
+                  formatCurrency={format}
+                  onRemind={() => handleRemind(debt)}
+                  onMarkPaid={() => handleMarkPaid(debt.id)}
+                  onToggleHistory={() => toggleHistory(debt.id)}
+                  showDivider={index > 0}
+                />
               ))
             )}
           </View>
         </View>
       </ScrollView>
 
-      <Modal visible={!!remindTarget} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: theme.surface }]}>
-            <View style={styles.modalHeader}>
-              <ThemedText type="subtitle">Send reminder</ThemedText>
-              <Pressable onPress={() => setRemindTarget(null)}>
-                <ThemedText style={styles.modalClose}>Close</ThemedText>
-              </Pressable>
-            </View>
-            <TextInput
-              value={remindText}
-              onChangeText={setRemindText}
-              multiline
-              style={[
-                styles.modalInput,
-                { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
-              ]}
-            />
-            <Pressable
-              onPress={sendReminder}
-              style={[styles.modalButton, { backgroundColor: theme.primary }]}>
-              <ThemedText style={styles.modalButtonText}>Send WhatsApp</ThemedText>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      <AutoReminderPrompt
+        visible={autoPromptVisible}
+        targets={autoTargets}
+        formatCurrency={format}
+        onSendReminder={sendAutoReminder}
+        onClose={() => setAutoPromptVisible(false)}
+      />
+
+      <ReminderModal
+        visible={!!remindTarget}
+        message={remindText}
+        onChangeMessage={setRemindText}
+        onClose={() => setRemindTarget(null)}
+        onSend={sendReminder}
+      />
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: {
+    flex: 1,
+  },
   scrollContent: {
     padding: 20,
     paddingBottom: 40,
     gap: 24,
   },
-  header: { gap: 8 },
-  caption: { fontSize: 14, opacity: 0.7 },
-  summaryRow: { flexDirection: 'row', gap: 12 },
-  summaryCard: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    gap: 6,
+  header: {
+    gap: 8,
   },
-  summaryLabel: { fontSize: 12, opacity: 0.6 },
-  summaryValue: { fontSize: 18 },
-  section: { gap: 12 },
+  caption: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  section: {
+    gap: 12,
+  },
   card: {
     borderWidth: 1,
     borderRadius: 16,
   },
-  row: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  rowTop: {
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'space-between',
-  },
-  rowDivider: {
-    borderTopWidth: 1,
-  },
-  rowBody: {
-    flex: 1,
-    gap: 4,
-  },
-  debtorName: { fontSize: 15 },
-  debtorMeta: { fontSize: 12, opacity: 0.6 },
-  rowActions: { alignItems: 'flex-end', gap: 6 },
-  debtorAmount: { fontSize: 14 },
-  actionRow: { flexDirection: 'row', gap: 8 },
-  remindButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  remindText: { color: '#FFFFFF', fontSize: 12 },
-  payButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  payText: { fontSize: 12 },
-  historyLink: {
-    fontSize: 11,
-    color: '#0F6A3D',
-    paddingTop: 4,
-  },
-  historyBlock: {
-    marginTop: 8,
-    padding: 10,
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 12,
-    alignSelf: 'stretch',
-  },
-  historyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  historyText: {
-    fontSize: 12,
-  },
-  historyMeta: {
-    fontSize: 11,
-    color: '#6B7280',
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalClose: {
-    fontSize: 12,
-    color: '#0F6A3D',
-  },
-  modalInput: {
-    minHeight: 120,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-    textAlignVertical: 'top',
-  },
-  modalButton: {
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  modalButtonText: { color: '#FFFFFF', fontSize: 14 },
   emptyState: {
     padding: 16,
     alignItems: 'center',
   },
-  emptyText: { fontSize: 13 },
+  emptyText: {
+    fontSize: 13,
+  },
 });

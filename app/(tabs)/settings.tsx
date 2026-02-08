@@ -1,10 +1,18 @@
 import Constants from 'expo-constants';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,13 +21,12 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
   clearAllData,
-  exportData,
   getAppSetting,
   getBusinessProfile,
-  importData,
   initDb,
   setAppSetting,
 } from '@/lib/db';
+import { setPlanTier } from '@/lib/subscription';
 import {
   cancelDailyReminder,
   requestNotificationPermission,
@@ -78,6 +85,8 @@ export default function SettingsScreen() {
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencyQuery, setCurrencyQuery] = useState('');
   const [themeModalVisible, setThemeModalVisible] = useState(false);
+  const [plan, setPlan] = useState<'free' | 'premium'>('free');
+  const [devPremiumEnabled, setDevPremiumEnabled] = useState(false);
 
   const themeOptions: Array<{ value: ThemeMode; label: string }> = [
     { value: 'system', label: 'System default' },
@@ -135,11 +144,13 @@ export default function SettingsScreen() {
 
   const loadSettings = useCallback(async () => {
     await initDb();
-    const [profile, storedTheme, storedCurrency, storedNotifications] = await Promise.all([
+    const [profile, storedTheme, storedCurrency, storedNotifications, storedPlan, devPremium] = await Promise.all([
       getBusinessProfile(),
       getAppSetting('theme_mode'),
       getAppSetting('currency'),
       getAppSetting('notifications_enabled'),
+      getAppSetting('plan_tier'),
+      getAppSetting('dev_premium_override'),
     ]);
     setBusinessName(profile?.business_name ?? 'Your business');
     if (storedTheme === 'system' || storedTheme === 'light' || storedTheme === 'dark') {
@@ -151,6 +162,10 @@ export default function SettingsScreen() {
     if (storedNotifications === 'true' || storedNotifications === 'false') {
       setNotificationsEnabled(storedNotifications === 'true');
     }
+    if (storedPlan === 'premium' || storedPlan === 'free') {
+      setPlan(storedPlan);
+    }
+    setDevPremiumEnabled(devPremium === 'true');
   }, []);
 
   useEffect(() => {
@@ -177,6 +192,14 @@ export default function SettingsScreen() {
   async function updateCurrency(value: Currency) {
     setCurrency(value);
     await setAppSetting('currency', value);
+  }
+
+  async function updateDevPremium(next: boolean) {
+    setDevPremiumEnabled(next);
+    await setAppSetting('dev_premium_override', next ? 'true' : 'false');
+    const nextPlan = next ? 'premium' : 'free';
+    await setPlanTier(nextPlan);
+    setPlan(nextPlan);
   }
 
   async function updateNotifications(next: boolean) {
@@ -216,62 +239,6 @@ export default function SettingsScreen() {
       console.error(error);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function handleExport() {
-    try {
-      setBusy(true);
-      const payload = await exportData();
-      const path = `${FileSystem.documentDirectory}kudibase-backup-${Date.now()}.json`;
-      await FileSystem.writeAsStringAsync(path, JSON.stringify(payload));
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(path, { dialogTitle: 'Export KudiBase data' });
-      } else {
-        Alert.alert('Exported', 'Backup saved in app storage.');
-      }
-    } catch (error) {
-      Alert.alert('Export failed', 'Unable to export data.');
-      console.error(error);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleImport() {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
-      });
-      if (result.canceled || !result.assets?.[0]) {
-        return;
-      }
-      Alert.alert('Import data', 'This will replace existing data. Continue?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Import',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setBusy(true);
-              const file = result.assets[0];
-              const content = await FileSystem.readAsStringAsync(file.uri);
-              const payload = JSON.parse(content);
-              await initDb();
-              await importData(payload);
-              Alert.alert('Import complete', 'Your data has been restored.');
-            } catch (error) {
-              Alert.alert('Import failed', 'Unable to import this file.');
-              console.error(error);
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ]);
-    } catch (error) {
-      Alert.alert('Import failed', 'Unable to import this file.');
-      console.error(error);
     }
   }
 
@@ -342,6 +309,50 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <ThemedText type="subtitle">Subscription</ThemedText>
+          <View style={[styles.listCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <Pressable onPress={() => router.push('/premium')} style={styles.listRow}>
+              <View style={[styles.iconBadge, { backgroundColor: theme.secondary }]}>
+                <IconSymbol name="star.fill" size={20} color={theme.primaryDeep} />
+              </View>
+              <View style={styles.rowContent}>
+                <ThemedText style={styles.cardTitle}>KudiBase Premium</ThemedText>
+                <ThemedText style={styles.cardMeta}>
+                  {plan === 'premium' ? 'Active' : 'Unlock premium features'}
+                </ThemedText>
+              </View>
+              <IconSymbol name="chevron.right" size={20} color={theme.muted} />
+            </Pressable>
+          </View>
+        </View>
+
+        {plan !== 'premium' ? (
+          <View style={styles.section}>
+            <ThemedText type="subtitle">Backup reminder</ThemedText>
+            <View style={[styles.bannerCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+              <View style={styles.bannerRow}>
+                <View style={styles.bannerText}>
+                  <ThemedText style={styles.cardTitle}>Protect your data</ThemedText>
+                  <ThemedText style={styles.cardMeta}>
+                    Export a backup or unlock Drive sync with Premium.
+                  </ThemedText>
+                </View>
+                <Pressable
+                  onPress={() => router.push('/backup')}
+                  style={[styles.bannerButton, { borderColor: theme.border }]}>
+                  <ThemedText style={styles.bannerButtonText}>Back up now</ThemedText>
+                </Pressable>
+              </View>
+              <Pressable
+                onPress={() => router.push('/premium')}
+                style={[styles.bannerUpgrade, { backgroundColor: theme.primary }]}>
+                <ThemedText style={styles.bannerUpgradeText}>Go Premium</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.section}>
           <ThemedText type="subtitle">App Settings</ThemedText>
           <View style={[styles.listCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
             <View style={styles.listRow}>
@@ -392,6 +403,27 @@ export default function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          <ThemedText type="subtitle">Developer</ThemedText>
+          <View style={[styles.listCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <View style={styles.listRow}>
+              <View style={[styles.iconBadge, { backgroundColor: theme.secondary }]}>
+                <IconSymbol name="hammer.fill" size={20} color={theme.primaryDeep} />
+              </View>
+              <View style={styles.rowContent}>
+                <ThemedText style={styles.cardTitle}>Force premium</ThemedText>
+                <ThemedText style={styles.cardMeta}>Enable premium for testing</ThemedText>
+              </View>
+              <Switch
+                value={devPremiumEnabled}
+                onValueChange={updateDevPremium}
+                trackColor={{ true: theme.primary, false: theme.border }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <ThemedText type="subtitle">Data Management</ThemedText>
           <View style={[styles.listCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
             <Pressable onPress={() => router.push('/backup')} style={styles.listRow}>
@@ -400,33 +432,7 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.rowContent}>
                 <ThemedText style={styles.cardTitle}>Backup & sync</ThemedText>
-                <ThemedText style={styles.cardMeta}>Local export and Drive sync</ThemedText>
-              </View>
-              <IconSymbol name="chevron.right" size={20} color={theme.muted} />
-            </Pressable>
-            <Pressable
-              onPress={handleExport}
-              disabled={busy}
-              style={[styles.listRow, styles.rowDivider, { borderColor: theme.border }]}>
-              <View style={[styles.iconBadge, { backgroundColor: theme.secondary }]}>
-                <IconSymbol name="arrow.down.circle.fill" size={20} color={theme.primaryDeep} />
-              </View>
-              <View style={styles.rowContent}>
-                <ThemedText style={styles.cardTitle}>Export data</ThemedText>
-                <ThemedText style={styles.cardMeta}>Download your data file</ThemedText>
-              </View>
-              <IconSymbol name="chevron.right" size={20} color={theme.muted} />
-            </Pressable>
-            <Pressable
-              onPress={handleImport}
-              disabled={busy}
-              style={[styles.listRow, styles.rowDivider, { borderColor: theme.border }]}>
-              <View style={[styles.iconBadge, { backgroundColor: theme.secondary }]}>
-                <IconSymbol name="arrow.up.circle.fill" size={20} color={theme.primaryDeep} />
-              </View>
-              <View style={styles.rowContent}>
-                <ThemedText style={styles.cardTitle}>Import data</ThemedText>
-                <ThemedText style={styles.cardMeta}>Restore from a backup file</ThemedText>
+                <ThemedText style={styles.cardMeta}>Local export, import, and Drive sync</ThemedText>
               </View>
               <IconSymbol name="chevron.right" size={20} color={theme.muted} />
             </Pressable>
@@ -488,57 +494,62 @@ export default function SettingsScreen() {
         <Pressable
           style={styles.modalBackdrop}
           onPress={() => setCurrencyModalVisible(false)}>
-          <Pressable
-            style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
-            onPress={(event) => event.stopPropagation()}>
-            <ThemedText type="subtitle">Select currency</ThemedText>
-            <TextInput
-              value={currencyQuery}
-              onChangeText={setCurrencyQuery}
-              placeholder="Search currency"
-              placeholderTextColor={theme.muted}
-              style={[
-                styles.searchInput,
-                { backgroundColor: theme.secondary, borderColor: theme.border, color: theme.text },
-              ]}
-            />
-            <ScrollView
-              style={[styles.modalList, { borderColor: theme.border }]}
-              contentContainerStyle={styles.modalListContent}
-              showsVerticalScrollIndicator={false}>
-              {filteredCurrencies.map((item, index) => (
-                <Pressable
-                  key={item.code}
-                  onPress={() => {
-                    updateCurrency(item.code).catch(() => {});
-                    setCurrencyQuery('');
-                    setCurrencyModalVisible(false);
-                  }}
-                  style={[
-                    styles.modalRow,
-                    index > 0 ? { borderTopWidth: 1, borderColor: theme.border } : null,
-                  ]}>
-                  <ThemedText style={styles.cardTitle}>{item.label}</ThemedText>
-                  {currency === item.code ? (
-                    <IconSymbol name="checkmark.circle.fill" size={20} color={theme.primary} />
-                  ) : null}
-                </Pressable>
-              ))}
-              {filteredCurrencies.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <ThemedText style={styles.cardMeta}>No matches found.</ThemedText>
-                </View>
-              ) : null}
-            </ScrollView>
+          <KeyboardAvoidingView
+            style={styles.modalKeyboard}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <Pressable
-              onPress={() => {
-                setCurrencyQuery('');
-                setCurrencyModalVisible(false);
-              }}
-              style={[styles.modalClose, { borderColor: theme.border }]}>
-              <ThemedText style={styles.cardTitle}>Close</ThemedText>
+              style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+              onPress={(event) => event.stopPropagation()}>
+              <ThemedText type="subtitle">Select currency</ThemedText>
+              <TextInput
+                value={currencyQuery}
+                onChangeText={setCurrencyQuery}
+                placeholder="Search currency"
+                placeholderTextColor={theme.muted}
+                style={[
+                  styles.searchInput,
+                  { backgroundColor: theme.secondary, borderColor: theme.border, color: theme.text },
+                ]}
+              />
+              <ScrollView
+                style={[styles.modalList, { borderColor: theme.border }]}
+                contentContainerStyle={styles.modalListContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled">
+                {filteredCurrencies.map((item, index) => (
+                  <Pressable
+                    key={item.code}
+                    onPress={() => {
+                      updateCurrency(item.code).catch(() => {});
+                      setCurrencyQuery('');
+                      setCurrencyModalVisible(false);
+                    }}
+                    style={[
+                      styles.modalRow,
+                      index > 0 ? { borderTopWidth: 1, borderColor: theme.border } : null,
+                    ]}>
+                    <ThemedText style={styles.cardTitle}>{item.label}</ThemedText>
+                    {currency === item.code ? (
+                      <IconSymbol name="checkmark.circle.fill" size={20} color={theme.primary} />
+                    ) : null}
+                  </Pressable>
+                ))}
+                {filteredCurrencies.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <ThemedText style={styles.cardMeta}>No matches found.</ThemedText>
+                  </View>
+                ) : null}
+              </ScrollView>
+              <Pressable
+                onPress={() => {
+                  setCurrencyQuery('');
+                  setCurrencyModalVisible(false);
+                }}
+                style={[styles.modalClose, { borderColor: theme.border }]}>
+                <ThemedText style={styles.cardTitle}>Close</ThemedText>
+              </Pressable>
             </Pressable>
-          </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
 
@@ -624,11 +635,43 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 14 },
   cardMeta: { fontSize: 12, opacity: 0.6 },
   cardLink: { fontSize: 12, color: '#0F6A3D' },
+  bannerCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+  },
+  bannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  bannerText: {
+    flex: 1,
+    gap: 6,
+  },
+  bannerButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  bannerButtonText: { fontSize: 12 },
+  bannerUpgrade: {
+    borderRadius: 12,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  bannerUpgradeText: { color: '#FFFFFF', fontSize: 13 },
   destructiveText: { color: '#C43D3D' },
   modalBackdrop: {
     flex: 1,
     padding: 24,
     backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+  },
+  modalKeyboard: {
+    flex: 1,
     justifyContent: 'center',
   },
   modalCard: {

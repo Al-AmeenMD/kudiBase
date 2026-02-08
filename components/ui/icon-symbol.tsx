@@ -31,6 +31,10 @@ const MAPPING = {
   'shield.fill': 'shield',
   'questionmark.circle.fill': 'help',
   'message.fill': 'chat-bubble',
+  'chevron.left': 'chevron-left',
+  'chart.bar.fill': 'bar-chart',
+  'star.fill': 'star',
+  'crown.fill': 'emoji-events',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
 } as IconMapping;

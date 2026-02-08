@@ -1,19 +1,24 @@
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View, Pressable } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCurrency } from '@/hooks/use-currency';
-import { getSalesSummary, initDb } from '@/lib/db';
+import { getBusinessProfile, getDeadStockItems, getItems, getOutstandingSales, getSalesSummary, initDb } from '@/lib/db';
+import { subscribeDbEvents } from '@/lib/db/events';
+import { subscribeSettings } from '@/lib/settings-events';
+import { isPremium } from '@/lib/subscription';
 
 const quickActions = [
-  { title: 'New Sale', subtitle: 'Cash, transfer, POS', tone: 'primary' },
-  { title: 'Add Stock', subtitle: 'Restock in seconds', tone: 'secondary' },
-  { title: 'Debtors', subtitle: 'Collect unpaid balances', tone: 'accent' },
+  { title: 'New Sale', subtitle: 'Cash, transfer, POS', tone: 'primary', route: '/sales' },
+  { title: 'Add Stock', subtitle: 'Restock in seconds', tone: 'secondary', route: '/inventory-item' },
+  { title: 'Records', subtitle: 'Track all sales', tone: 'accent', route: '/records' },
+  { title: 'Debtors', subtitle: 'Collect unpaid balances', tone: 'danger', route: '/debts' },
 ];
 
 function getTodayRange() {
@@ -36,16 +41,14 @@ function getWeekRange() {
   return { startMs: start.getTime(), endMs: end.getTime() };
 }
 
-const inventoryPulse = [
-  { name: 'Rice 25kg', status: 'Low stock • 4 left' },
-  { name: '5L Palm Oil', status: 'Healthy • 18 left' },
-  { name: 'Phone Charger', status: 'Low stock • 2 left' },
-];
+const lowStockThreshold = 5;
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const { format } = useCurrency();
+  const router = useRouter();
+  const { width } = useWindowDimensions();
   const [stats, setStats] = useState({
     totalSales: 0,
     totalPaid: 0,
@@ -59,11 +62,23 @@ export default function HomeScreen() {
     totalDue: 0,
     saleCount: 0,
   });
+  const [businessName, setBusinessName] = useState('Add business name');
+  const [lowStockItems, setLowStockItems] = useState<Array<{ id: string; name: string; stock: number }>>([]);
+  const [topDebtors, setTopDebtors] = useState<
+    Array<{ id: string; name: string; amount: number; dueDate?: string | null }>
+  >([]);
+  const [deadStock, setDeadStock] = useState<Array<{ id: string; name: string; stock: number; days: number }>>([]);
+  const [premium, setPremium] = useState(false);
 
   const loadSummary = useCallback(async () => {
     await initDb();
     const { startMs, endMs } = getTodayRange();
-    const summary = await getSalesSummary(startMs, endMs);
+    const [summary, profile, items, debts] = await Promise.all([
+      getSalesSummary(startMs, endMs),
+      getBusinessProfile(),
+      getItems(),
+      getOutstandingSales(),
+    ]);
     setStats({
       totalSales: summary.totals.total_sales ?? 0,
       totalPaid: summary.totals.total_paid ?? 0,
@@ -74,6 +89,44 @@ export default function HomeScreen() {
         totalSales: row.total_sales ?? 0,
       })),
     });
+    setBusinessName(profile?.business_name?.trim() || 'Add business name');
+    const lowStock = items
+      .filter((item) => item.stock_qty <= lowStockThreshold)
+      .map((item) => ({ id: item.id, name: item.name, stock: item.stock_qty }))
+      .sort((a, b) => a.stock - b.stock);
+    setLowStockItems(lowStock);
+    const top = debts
+      .map((row) => ({
+        id: row.id,
+        name: row.customer_name ?? `Sale #${row.sale_number}`,
+        amount: row.balance_due,
+        dueDate: row.due_date,
+      }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 3);
+    setTopDebtors(top);
+    let premiumStatus = false;
+    try {
+      premiumStatus = await isPremium();
+    } catch {
+      premiumStatus = false;
+    }
+    setPremium(premiumStatus);
+
+    if (premiumStatus) {
+      const deadRows = await getDeadStockItems(Date.now() - 1000 * 60 * 60 * 24 * 30, 3);
+      const now = Date.now();
+      setDeadStock(
+        deadRows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          stock: row.stock_qty,
+          days: row.last_sold_at ? Math.floor((now - row.last_sold_at) / (1000 * 60 * 60 * 24)) : 999,
+        }))
+      );
+    } else {
+      setDeadStock([]);
+    }
 
     const { startMs: weekStart, endMs: weekEnd } = getWeekRange();
     const weekSummary = await getSalesSummary(weekStart, weekEnd);
@@ -86,7 +139,33 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    loadSummary().catch((error) => console.error(error));
+    const unsubscribe = subscribeSettings((key, value) => {
+      if (key === 'business_profile') {
+        const next = value?.trim() || 'Add business name';
+        setBusinessName(next);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeDbEvents((event) => {
+      if (event === 'sales' || event === 'profile') {
+        loadSummary().catch(() => {});
+      }
+    });
+    return unsubscribe;
+  }, [loadSummary]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (cancelled) return;
+      await loadSummary();
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [loadSummary]);
 
   useFocusEffect(
@@ -110,6 +189,10 @@ export default function HomeScreen() {
     { label: 'Week Debts', value: format(weekStats.totalDue), note: 'Outstanding' },
   ];
 
+  const quickActionBasis = width >= 900 ? '23%' : width >= 600 ? '31%' : '48%';
+  const statColumns = width >= 900 ? 3 : 2;
+  const statCardBasis = statColumns === 3 ? '31%' : '48%';
+
   return (
     <ThemedView style={styles.container}>
       <View style={[styles.heroGlow, { backgroundColor: theme.secondary }]} />
@@ -126,8 +209,10 @@ export default function HomeScreen() {
               </ThemedText>
             </View>
           </View>
-          <Pressable style={[styles.pill, { backgroundColor: theme.surface }]}>
-            <ThemedText style={styles.pillText}>Add business name</ThemedText>
+          <Pressable
+            onPress={() => router.push('/profile')}
+            style={[styles.pill, { backgroundColor: theme.surface }]}>
+            <ThemedText style={styles.pillText}>{businessName}</ThemedText>
           </Pressable>
         </View>
 
@@ -138,19 +223,26 @@ export default function HomeScreen() {
               const isSecondary = action.tone === 'secondary';
               const titleColor = isSecondary ? theme.onSecondary : '#FFFFFF';
               const subtitleColor = isSecondary ? theme.onSecondary : '#FFFFFF';
+              const cardColor =
+                action.tone === 'primary'
+                  ? theme.primary
+                  : action.tone === 'secondary'
+                    ? theme.secondary
+                    : action.tone === 'danger'
+                      ? '#D64545'
+                      : theme.accent;
 
               return (
-              <View
+              <Pressable
                 key={action.title}
+                onPress={() => router.push(action.route)}
                 style={[
                   styles.actionCard,
                   {
-                    backgroundColor:
-                      action.tone === 'primary'
-                        ? theme.primary
-                        : action.tone === 'secondary'
-                          ? theme.secondary
-                          : theme.accent,
+                    flexBasis: quickActionBasis,
+                    maxWidth: quickActionBasis,
+                    flexGrow: 0,
+                    backgroundColor: cardColor,
                   },
                 ]}>
                 <ThemedText style={[styles.actionTitle, { color: titleColor }]}>
@@ -159,7 +251,7 @@ export default function HomeScreen() {
                 <ThemedText style={[styles.actionSubtitle, { color: subtitleColor }]}>
                   {action.subtitle}
                 </ThemedText>
-              </View>
+              </Pressable>
             );})}
           </View>
         </View>
@@ -167,15 +259,24 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <ThemedText type="subtitle">Today at a glance</ThemedText>
           <View style={styles.statsRow}>
-            {todayStats.map((stat) => (
+            {todayStats.map((stat, index) => (
               <View
                 key={stat.label}
                 style={[
                   styles.statCard,
                   { borderColor: theme.border, backgroundColor: theme.surface },
+                  statColumns === 2 && index === todayStats.length - 1
+                    ? styles.statCardFull
+                    : { flexBasis: statCardBasis },
                 ]}>
                 <ThemedText style={styles.statLabel}>{stat.label}</ThemedText>
-                <ThemedText style={styles.statValue}>{stat.value}</ThemedText>
+                <ThemedText
+                  style={styles.statValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}>
+                  {stat.value}
+                </ThemedText>
                 <ThemedText style={styles.statNote}>{stat.note}</ThemedText>
               </View>
             ))}
@@ -185,15 +286,24 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <ThemedText type="subtitle">This week</ThemedText>
           <View style={styles.statsRow}>
-            {weeklyStats.map((stat) => (
+            {weeklyStats.map((stat, index) => (
               <View
                 key={stat.label}
                 style={[
                   styles.statCard,
                   { borderColor: theme.border, backgroundColor: theme.surface },
+                  statColumns === 2 && index === weeklyStats.length - 1
+                    ? styles.statCardFull
+                    : { flexBasis: statCardBasis },
                 ]}>
                 <ThemedText style={styles.statLabel}>{stat.label}</ThemedText>
-                <ThemedText style={styles.statValue}>{stat.value}</ThemedText>
+                <ThemedText
+                  style={styles.statValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}>
+                  {stat.value}
+                </ThemedText>
                 <ThemedText style={styles.statNote}>{stat.note}</ThemedText>
               </View>
             ))}
@@ -201,20 +311,87 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.section}>
-          <ThemedText type="subtitle">Inventory pulse</ThemedText>
+          <ThemedText type="subtitle">Low stock items</ThemedText>
           <View
             style={[
               styles.listCard,
               { borderColor: theme.border, backgroundColor: theme.surface },
             ]}>
-            {inventoryPulse.map((item, index) => (
-              <View
-                key={item.name}
-                style={[styles.listRow, index > 0 && [styles.rowDivider, { borderTopColor: theme.border }]]}>
-                <ThemedText style={styles.listTitle}>{item.name}</ThemedText>
-                <ThemedText style={styles.listMeta}>{item.status}</ThemedText>
+            {lowStockItems.length === 0 ? (
+              <View style={styles.emptyRow}>
+                <ThemedText style={[styles.listMeta, { color: theme.muted }]}>
+                  No low stock items.
+                </ThemedText>
               </View>
-            ))}
+            ) : (
+              lowStockItems.map((item, index) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
+                  style={[styles.listRow, index > 0 && [styles.rowDivider, { borderTopColor: theme.border }]]}>
+                  <ThemedText style={styles.listTitle}>{item.name}</ThemedText>
+                  <ThemedText style={styles.listMeta}>Low stock • {item.stock} left</ThemedText>
+                </Pressable>
+              ))
+            )}
+          </View>
+        </View>
+
+        {premium ? (
+          <View style={styles.section}>
+            <ThemedText type="subtitle">Dead stock alerts</ThemedText>
+            <View
+              style={[
+                styles.listCard,
+                { borderColor: theme.border, backgroundColor: theme.surface },
+              ]}>
+              {deadStock.length === 0 ? (
+                <View style={styles.emptyRow}>
+                  <ThemedText style={[styles.listMeta, { color: theme.muted }]}>
+                    No stale inventory detected.
+                  </ThemedText>
+                </View>
+              ) : (
+                deadStock.map((item, index) => (
+                  <Pressable
+                    key={item.id}
+                    onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
+                    style={[styles.listRow, index > 0 && [styles.rowDivider, { borderTopColor: theme.border }]]}>
+                    <ThemedText style={styles.listTitle}>{item.name}</ThemedText>
+                    <ThemedText style={styles.listMeta}>
+                      {item.stock} left • {item.days >= 999 ? 'Never sold' : `${item.days} days`}
+                    </ThemedText>
+                  </Pressable>
+                ))
+              )}
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.section}>
+          <ThemedText type="subtitle">Top debtors</ThemedText>
+          <View
+            style={[
+              styles.listCard,
+              { borderColor: theme.border, backgroundColor: theme.surface },
+            ]}>
+            {topDebtors.length === 0 ? (
+              <View style={styles.emptyRow}>
+                <ThemedText style={[styles.listMeta, { color: theme.muted }]}>
+                  No outstanding debts.
+                </ThemedText>
+              </View>
+            ) : (
+              topDebtors.map((debtor, index) => (
+                <Pressable
+                  key={debtor.id}
+                  onPress={() => router.push('/debts')}
+                  style={[styles.listRow, index > 0 && [styles.rowDivider, { borderTopColor: theme.border }]]}>
+                  <ThemedText style={styles.listTitle}>{debtor.name}</ThemedText>
+                  <ThemedText style={styles.listMeta}>{format(debtor.amount)}</ThemedText>
+                </Pressable>
+              ))
+            )}
           </View>
         </View>
       </ScrollView>
@@ -250,8 +427,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logo: {
-    width: 48,
-    height: 48,
+    width: 56,
+    height: 56,
     borderRadius: 16,
   },
   brandCaption: {
@@ -277,7 +454,6 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   actionCard: {
-    flexBasis: '48%',
     borderRadius: 16,
     padding: 16,
     minHeight: 96,
@@ -298,10 +474,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   statCard: {
-    flexBasis: '31%',
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
+    minWidth: 140,
+  },
+  statCardFull: {
+    flexBasis: '100%',
   },
   statLabel: {
     fontSize: 12,
@@ -309,6 +488,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 18,
+    flexShrink: 1,
   },
   statNote: {
     fontSize: 11,
@@ -322,6 +502,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 4,
+  },
+  emptyRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    alignItems: 'center',
   },
   rowDivider: {
     borderTopWidth: 1,

@@ -1,50 +1,112 @@
-# Welcome to your Expo app 👋
+# KudiBase 💰
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A modern POS (Point of Sale) app for Nigerian small business merchants. Built with React Native (Expo) and SQLite.
 
-## Get started
+## Features
 
-1. Install dependencies
+- **📊 Sales Tracking** - Record sales with multiple payment methods (Cash, Transfer, POS, Pay Later)
+- **📦 Inventory Management** - Track stock levels with low stock alerts
+- **💳 Debt Management** - Track outstanding payments and send WhatsApp reminders
+- **📈 Reports & Analytics** - Sales summaries, profit tracking, top products
+- **☁️ Google Drive Backup** - Secure cloud backup and restore
+- **🌙 Dark Mode** - Full dark/light theme support
+- **💎 Premium Features** - Auto-reminders, PDF receipts, and more
 
-   ```bash
-   npm install
-   ```
+## Tech Stack
 
-2. Start the app
+- **Framework:** React Native (Expo SDK 54)
+- **Language:** TypeScript
+- **Database:** SQLite (expo-sqlite)
+- **Navigation:** Expo Router (file-based)
+- **Payments:** RevenueCat
+- **Styling:** React Native StyleSheet
 
-   ```bash
-   npx expo start
-   ```
+## Getting Started
 
-In the output, you'll find options to open the app in a
+### Prerequisites
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Node.js 18+
+- npm or yarn
+- Expo CLI (`npm install -g expo-cli`)
+- iOS Simulator / Android Emulator / Physical device
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### Installation
 
 ```bash
-npm run reset-project
+# Clone the repository
+git clone https://github.com/your-repo/kudibase.git
+cd kudibase
+
+# Install dependencies
+npm install
+
+# Start the development server
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Running on Device
 
-## Learn more
+```bash
+# iOS
+npm run ios
 
-To learn more about developing your project with Expo, look at the following resources:
+# Android
+npm run android
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Project Structure
 
-## Join the community
+```
+├── app/                    # Screens (file-based routing)
+│   ├── (tabs)/             # Tab navigation screens
+│   │   ├── index.tsx       # Dashboard
+│   │   ├── sales.tsx       # POS screen
+│   │   ├── inventory.tsx   # Inventory management
+│   │   ├── debts.tsx       # Debt tracking
+│   │   └── settings.tsx    # App settings
+│   └── ...                 # Other routes
+├── components/             # Reusable components
+│   ├── sales/              # Sales screen components
+│   ├── debts/              # Debts screen components
+│   └── ui/                 # UI primitives
+├── hooks/                  # Custom React hooks
+├── lib/                    # Business logic
+│   └── db/                 # Database modules
+│       ├── connection.ts   # DB connection utilities
+│       ├── schema.ts       # Table creation, migrations
+│       ├── items.ts        # Inventory CRUD
+│       ├── sales.ts        # Sales + reports
+│       ├── payments.ts     # Payment records
+│       ├── settings.ts     # App settings
+│       └── import-export.ts # Backup/restore
+└── constants/              # Theme, colors, config
+```
 
-Join our community of developers creating universal apps.
+## Scripts
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+npm start           # Start Expo dev server
+npm run ios         # Run on iOS
+npm run android     # Run on Android
+npm test            # Run tests
+npm run test:watch  # Run tests in watch mode
+npm run lint        # Run ESLint
+```
+
+## Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run with coverage
+npm run test:coverage
+```
+
+## License
+
+Private - All rights reserved
+
+## Author
+
+Al-Ameen Muhammad

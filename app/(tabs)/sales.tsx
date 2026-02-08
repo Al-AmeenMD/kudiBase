@@ -1,6 +1,8 @@
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -9,30 +11,25 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Contacts from 'expo-contacts';
 
+import {
+  CartView,
+  PayLaterForm,
+  PaymentBreakdown,
+  PaymentMethodPicker,
+  QuickAddGrid,
+  SalesSummaryCard,
+  type CartItem,
+  type Item,
+  type PaymentMethod,
+  type SalesSummary,
+} from '@/components/sales';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useCurrency } from '@/hooks/use-currency';
-import { getItems, getSalesSummary, initDb, recordSale } from '@/lib/db';
-
-type PaymentMethod = 'Cash' | 'Transfer' | 'POS' | 'Pay Later';
-
-type Item = {
-  id: string;
-  name: string;
-  price: number;
-  stock: number;
-};
-
-type CartItem = Item & {
-  qty: number;
-};
-
-const paymentMethods: PaymentMethod[] = ['Cash', 'Transfer', 'POS', 'Pay Later'];
+import { getItems, getRecentCustomers, getSalesSummary, initDb, recordSale } from '@/lib/db';
 
 function getTodayRange() {
   const start = new Date();
@@ -54,43 +51,67 @@ function getWeekRange() {
   return { startMs: start.getTime(), endMs: end.getTime() };
 }
 
-function formatDateLabel(date: Date) {
-  return date.toLocaleDateString('en-NG', { day: '2-digit', month: 'short' });
+function formatNumberInput(value: string) {
+  const digits = value.replace(/[^\d]/g, '');
+  if (!digits) {
+    return '';
+  }
+  const number = Number(digits);
+  return Number.isFinite(number) ? number.toLocaleString('en-NG') : '';
+}
+
+function parseNumberInput(value: string) {
+  const digits = value.replace(/[^\d]/g, '');
+  return digits ? Number(digits) : 0;
 }
 
 export default function SalesScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const { format } = useCurrency();
   const router = useRouter();
   const scrollRef = useRef<ScrollView | null>(null);
-  const cartRef = useRef<View | null>(null);
   const scrollYRef = useRef(0);
   const scrollViewHeightRef = useRef(0);
   const cartLayoutRef = useRef<{ y: number; height: number } | null>(null);
+
+  // Items state
   const [items, setItems] = useState<Item[]>([]);
+  const [quickSearch, setQuickSearch] = useState('');
+  const [showAllQuick, setShowAllQuick] = useState(false);
+
+  // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [qtyInputs, setQtyInputs] = useState<Record<string, string>>({});
+  const qtyWarnedRef = useRef<Record<string, boolean>>({});
+
+  // Payment state
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [amountReceived, setAmountReceived] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [showCustomerDetails, setShowCustomerDetails] = useState(true);
+  const [lastNonPayLaterExpanded, setLastNonPayLaterExpanded] = useState(true);
+  const [recentCustomers, setRecentCustomers] = useState<Array<{ name: string; phone: string | null }>>([]);
+  const [contactsVisible, setContactsVisible] = useState(false);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsList, setContactsList] = useState<Array<{ id: string; name: string; phone: string }>>([]);
+  const [contactsHasNext, setContactsHasNext] = useState(false);
+  const [contactsPageOffset, setContactsPageOffset] = useState(0);
+  const [contactsLoadingMore, setContactsLoadingMore] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
   const [dueDate, setDueDate] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() + 7);
     return date;
   });
-  const [summary, setSummary] = useState({
+
+  // Summary state
+  const [summary, setSummary] = useState<SalesSummary>({
     totalSales: 0,
     totalPaid: 0,
     totalDue: 0,
     saleCount: 0,
-    byMethod: [] as Array<{
-      method: string;
-      totalSales: number;
-      totalPaid: number;
-      totalDue: number;
-      saleCount: number;
-    }>,
+    byMethod: [],
   });
   const [range, setRange] = useState<'today' | 'week' | 'custom'>('today');
   const [customStart, setCustomStart] = useState(() => {
@@ -103,14 +124,9 @@ export default function SalesScreen() {
     end.setHours(23, 59, 59, 999);
     return end;
   });
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const [showDueDatePicker, setShowDueDatePicker] = useState(false);
-  const [qtyInputs, setQtyInputs] = useState<Record<string, string>>({});
-  const amountWarnedRef = useRef(false);
-  const qtyWarnedRef = useRef<Record<string, boolean>>({});
 
+  // Computed values
   const cartQuantities = useMemo(() => {
     return cart.reduce<Record<string, number>>((acc, item) => {
       acc[item.id] = item.qty;
@@ -118,6 +134,19 @@ export default function SalesScreen() {
     }, {});
   }, [cart]);
 
+  const subtotal = useMemo(() => {
+    return cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  }, [cart]);
+
+  const balanceDue = useMemo(() => {
+    const paid = parseNumberInput(amountReceived);
+    if (paymentMethod === 'Pay Later') {
+      return subtotal - paid;
+    }
+    return 0;
+  }, [paymentMethod, amountReceived, subtotal]);
+
+  // Data loading
   const loadItems = useCallback(async () => {
     await initDb();
     const rows = await getItems();
@@ -126,6 +155,7 @@ export default function SalesScreen() {
         id: row.id,
         name: row.name,
         price: row.price,
+        cost: row.cost_price ?? 0,
         stock: row.stock_qty,
       }))
     );
@@ -164,6 +194,16 @@ export default function SalesScreen() {
     });
   }, [range, customStart, customEnd]);
 
+  const loadRecentCustomers = useCallback(async () => {
+    await initDb();
+    const rows = await getRecentCustomers(8);
+    setRecentCustomers(
+      rows.map((row) => ({
+        name: row.customer_name ?? 'Customer',
+        phone: row.customer_phone ?? null,
+      }))
+    );
+  }, []);
 
   useEffect(() => {
     loadItems().catch((error) => {
@@ -174,7 +214,8 @@ export default function SalesScreen() {
       Alert.alert('Setup error', 'Unable to load sales summary.');
       console.error(error);
     });
-  }, [loadItems, loadSummary]);
+    loadRecentCustomers().catch(() => {});
+  }, [loadItems, loadRecentCustomers, loadSummary]);
 
   useEffect(() => {
     setQtyInputs((prev) => {
@@ -186,6 +227,100 @@ export default function SalesScreen() {
     });
   }, [cart]);
 
+  useEffect(() => {
+    if (paymentMethod === 'Pay Later') {
+      setLastNonPayLaterExpanded((prev) => (showCustomerDetails ? true : prev));
+      setShowCustomerDetails(false);
+    } else {
+      setShowCustomerDetails(lastNonPayLaterExpanded);
+    }
+  }, [lastNonPayLaterExpanded, paymentMethod]);
+
+  const filteredContacts = useMemo(() => {
+    const term = contactSearch.trim().toLowerCase();
+    if (!term) return contactsList;
+    const digits = term.replace(/[^\d]/g, '');
+    return contactsList.filter((contact) => {
+      const nameMatch = contact.name.toLowerCase().includes(term);
+      if (nameMatch) return true;
+      if (!digits) return false;
+      const phoneDigits = contact.phone.replace(/[^\d]/g, '');
+      return phoneDigits.includes(digits);
+    });
+  }, [contactSearch, contactsList]);
+
+  useEffect(() => {
+    if (!contactSearch.trim()) return;
+    if (filteredContacts.length > 0) return;
+    if (!contactsHasNext || contactsLoadingMore) return;
+    handleLoadMoreContacts().catch(() => {});
+  }, [contactSearch, contactsHasNext, contactsLoadingMore, filteredContacts.length]);
+
+  async function loadContactsPage(offset: number, limit: number = 200) {
+    const { data, hasNextPage } = await Contacts.getContactsAsync({
+      pageSize: limit,
+      pageOffset: offset,
+      fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+      sort: Contacts.SortTypes.FirstName,
+    });
+    const batch = data
+      .map((contact) => {
+        const phone = contact.phoneNumbers?.find((entry) => entry.number)?.number ?? '';
+        return {
+          id: String(contact.id),
+          name: contact.name ?? 'Unknown',
+          phone: phone.replace(/\s+/g, ' ').trim(),
+        };
+      })
+      .filter((contact) => contact.phone.length > 0);
+    return { batch, hasNextPage };
+  }
+
+  async function handlePickContact() {
+    try {
+      setContactsLoading(true);
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Allow contacts access to pick a customer.');
+        return;
+      }
+      const { batch, hasNextPage } = await loadContactsPage(0);
+      setContactsList(batch);
+      setContactsHasNext(Boolean(hasNextPage));
+      setContactsPageOffset(batch.length);
+      setContactsVisible(true);
+    } catch (error) {
+      Alert.alert('Contacts error', 'Unable to load contacts.');
+      console.error(error);
+    } finally {
+      setContactsLoading(false);
+    }
+  }
+
+  async function handleLoadMoreContacts() {
+    if (contactsLoadingMore || !contactsHasNext) return;
+    try {
+      setContactsLoadingMore(true);
+      const { batch, hasNextPage } = await loadContactsPage(contactsPageOffset);
+      setContactsList((prev) => [...prev, ...batch]);
+      setContactsHasNext(Boolean(hasNextPage));
+      setContactsPageOffset((prev) => prev + batch.length);
+    } catch (error) {
+      Alert.alert('Contacts error', 'Unable to load more contacts.');
+      console.error(error);
+    } finally {
+      setContactsLoadingMore(false);
+    }
+  }
+
+  function handleSelectCustomer(name: string, phone?: string | null) {
+    setCustomerName(name);
+    setCustomerPhone(phone ?? '');
+    if (paymentMethod !== 'Pay Later') {
+      setShowCustomerDetails(true);
+    }
+  }
+
   useFocusEffect(
     useCallback(() => {
       loadItems().catch((error) => {
@@ -196,42 +331,25 @@ export default function SalesScreen() {
         Alert.alert('Load error', 'Unable to refresh summary.');
         console.error(error);
       });
-    }, [loadItems, loadSummary])
+      loadRecentCustomers().catch(() => {});
+    }, [loadItems, loadRecentCustomers, loadSummary])
   );
 
-  const subtotal = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  }, [cart]);
-
-  const balanceDue = useMemo(() => {
-    const paid = Number(amountReceived || 0);
-    if (paymentMethod === 'Pay Later') {
-      return subtotal - paid;
-    }
-    return 0;
-  }, [paymentMethod, amountReceived, subtotal]);
-
-
+  // Cart handlers
   function scrollToCart() {
     const layout = cartLayoutRef.current;
-    if (!layout) {
-      return;
-    }
+    if (!layout) return;
     const scrollY = scrollYRef.current;
     const viewHeight = scrollViewHeightRef.current;
     const isVisible = scrollY <= layout.y && scrollY + viewHeight >= layout.y + layout.height;
-    if (isVisible) {
-      return;
-    }
+    if (isVisible) return;
     scrollRef.current?.scrollTo({ y: Math.max(layout.y - 12, 0), animated: true });
   }
 
   function addToCart(item: Item) {
     setCart((prev) => {
       const existing = prev.find((entry) => entry.id === item.id);
-      if (existing && existing.qty >= item.stock) {
-        return prev;
-      }
+      if (existing && existing.qty >= item.stock) return prev;
       if (existing) {
         return prev.map((entry) =>
           entry.id === item.id ? { ...entry, qty: entry.qty + 1 } : entry
@@ -243,30 +361,26 @@ export default function SalesScreen() {
   }
 
   function updateQty(itemId: string, delta: number) {
-    setCart((prev) =>
-      prev
+    setCart((prev) => {
+      const next = prev
         .map((entry) => {
-          if (entry.id !== itemId) {
-            return entry;
-          }
+          if (entry.id !== itemId) return entry;
           const nextQty = Math.max(0, entry.qty + delta);
           return { ...entry, qty: Math.min(nextQty, entry.stock) };
         })
-        .filter((entry) => entry.qty > 0)
-    );
-  }
-
-  function setQty(itemId: string, value: string) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) {
-      return;
-    }
-    const nextQty = Math.max(1, Math.floor(parsed));
-    setCart((prev) =>
-      prev.map((entry) =>
-        entry.id === itemId ? { ...entry, qty: Math.min(nextQty, entry.stock) } : entry
-      )
-    );
+        .filter((entry) => entry.qty > 0);
+      setQtyInputs((prevInputs) => {
+        const updated = { ...prevInputs };
+        const updatedItem = next.find((entry) => entry.id === itemId);
+        if (!updatedItem) {
+          delete updated[itemId];
+        } else {
+          updated[itemId] = String(updatedItem.qty);
+        }
+        return updated;
+      });
+      return next;
+    });
   }
 
   function updateQtyInput(itemId: string, value: string) {
@@ -300,6 +414,7 @@ export default function SalesScreen() {
     updateQtyInput(itemId, value);
   }
 
+  // Sale completion
   async function handleCompleteSale() {
     if (cart.length === 0) {
       Alert.alert('Cart is empty', 'Add items before completing a sale.');
@@ -319,8 +434,10 @@ export default function SalesScreen() {
 
     const amountPaid =
       paymentMethod === 'Pay Later'
-        ? Number(amountReceived || 0)
-        : Number(amountReceived || subtotal);
+        ? parseNumberInput(amountReceived)
+        : amountReceived
+          ? parseNumberInput(amountReceived)
+          : subtotal;
     const balance = paymentMethod === 'Pay Later' ? Math.max(subtotal - amountPaid, 0) : 0;
 
     try {
@@ -340,6 +457,7 @@ export default function SalesScreen() {
           id: row.id,
           name: row.name,
           price: row.price,
+          cost: row.cost_price ?? 0,
           stock: row.stock_qty,
         }))
       );
@@ -365,456 +483,251 @@ export default function SalesScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView
-        ref={scrollRef}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        onLayout={(event) => {
-          scrollViewHeightRef.current = event.nativeEvent.layout.height;
-        }}
-        onScroll={(event) => {
-          scrollYRef.current = event.nativeEvent.contentOffset.y;
-        }}
-        scrollEventThrottle={16}>
-        <View style={styles.header}>
-          <ThemedText type="title">POS</ThemedText>
-          <ThemedText style={[styles.caption, { color: theme.muted }]}>
-            Add items quickly, take payment, and send a receipt.
-          </ThemedText>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.summaryHeader}>
-            <ThemedText type="subtitle">Sales summary</ThemedText>
-          </View>
-          <View style={styles.rangeRow}>
-            {(['today', 'week', 'custom'] as const).map((value) => (
-              <Pressable
-                key={value}
-                onPress={() => setRange(value)}
-                style={[
-                  styles.rangeChip,
-                  {
-                    backgroundColor: range === value ? theme.primary : theme.surface,
-                    borderColor: theme.border,
-                  },
-                ]}>
-                <ThemedText style={{ color: range === value ? '#FFFFFF' : theme.text }}>
-                  {value === 'today' ? 'Today' : value === 'week' ? 'This week' : 'Custom'}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-          {range === 'custom' && (
-            <View style={styles.customRangeRow}>
-              <Pressable
-                onPress={() => setShowStartPicker(true)}
-                style={[styles.dateChip, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-                <ThemedText style={styles.dateText}>From {formatDateLabel(customStart)}</ThemedText>
-              </Pressable>
-              <Pressable
-                onPress={() => setShowEndPicker(true)}
-                style={[styles.dateChip, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-                <ThemedText style={styles.dateText}>To {formatDateLabel(customEnd)}</ThemedText>
-              </Pressable>
-            </View>
-          )}
-          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryBlock}>
-                <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Sales</ThemedText>
-                <ThemedText style={styles.summaryValue}>{format(summary.totalSales)}</ThemedText>
-                <ThemedText style={[styles.summaryMeta, { color: theme.muted }]}>
-                  {summary.saleCount} transactions
-                </ThemedText>
-              </View>
-              <View style={styles.summaryBlock}>
-                <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Cash in</ThemedText>
-                <ThemedText style={styles.summaryValue}>{format(summary.totalPaid)}</ThemedText>
-                <ThemedText style={[styles.summaryMeta, { color: theme.muted }]}>Collected</ThemedText>
-              </View>
-              <View style={styles.summaryBlock}>
-                <ThemedText style={[styles.summaryLabel, { color: theme.muted }]}>Outstanding</ThemedText>
-                <ThemedText style={styles.summaryValue}>{format(summary.totalDue)}</ThemedText>
-                <ThemedText style={[styles.summaryMeta, { color: theme.muted }]}>Pay later</ThemedText>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        <Pressable
-          onPress={() => router.push('/receipts')}
-          style={[styles.receiptsButton, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-          <ThemedText style={styles.receiptsButtonText}>View receipt history</ThemedText>
-        </Pressable>
-
-
-        {showStartPicker && (
-          <DateTimePicker
-            value={customStart}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'compact' : 'default'}
-            onChange={(_event, date) => {
-              setShowStartPicker(false);
-              if (date) {
-                const next = new Date(date);
-                next.setHours(0, 0, 0, 0);
-                setCustomStart(next);
-              }
-            }}
-          />
-        )}
-        {showEndPicker && (
-          <DateTimePicker
-            value={customEnd}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'compact' : 'default'}
-            onChange={(_event, date) => {
-              setShowEndPicker(false);
-              if (date) {
-                const next = new Date(date);
-                next.setHours(23, 59, 59, 999);
-                setCustomEnd(next);
-              }
-            }}
-          />
-        )}
-
-        {showDueDatePicker && Platform.OS !== 'ios' && (
-          <DateTimePicker
-            value={dueDate}
-            mode="date"
-            display="default"
-            minimumDate={new Date()}
-            onChange={(_event, date) => {
-              setShowDueDatePicker(false);
-              if (date) {
-                const next = new Date(date);
-                next.setHours(23, 59, 59, 999);
-                setDueDate(next);
-              }
-            }}
-          />
-        )}
-        {showDueDatePicker && Platform.OS === 'ios' && (
-          <Modal transparent animationType="fade" onRequestClose={() => setShowDueDatePicker(false)}>
-            <Pressable style={styles.modalBackdrop} onPress={() => setShowDueDatePicker(false)}>
-              <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
-                <View style={styles.modalHeader}>
-                  <ThemedText type="subtitle">Select due date</ThemedText>
-                  <Pressable onPress={() => setShowDueDatePicker(false)}>
-                    <ThemedText style={styles.modalDone}>Done</ThemedText>
-                  </Pressable>
-                </View>
-                <DateTimePicker
-                  value={dueDate}
-                  mode="date"
-                  display="spinner"
-                  minimumDate={new Date()}
-                  onChange={(_event, date) => {
-                    if (date) {
-                      const next = new Date(date);
-                      next.setHours(23, 59, 59, 999);
-                      setDueDate(next);
-                    }
-                  }}
-                />
-              </Pressable>
-            </Pressable>
-          </Modal>
-        )}
-
-        <View style={styles.section}>
-          <ThemedText type="subtitle">Quick add items</ThemedText>
-          <View style={styles.itemGrid}>
-            {items.map((item) => {
-              const qtyInCart = cartQuantities[item.id] ?? 0;
-              const isAtLimit = qtyInCart >= item.stock;
-              const isOutOfStock = item.stock === 0 || isAtLimit;
-              const statusLabel = isOutOfStock ? 'Out of stock' : '';
-
-              return (
-                <Pressable
-                  key={item.id}
-                  onPress={() => addToCart(item)}
-                  disabled={isOutOfStock || isAtLimit}
-                  style={[
-                    styles.itemCard,
-                    { backgroundColor: theme.surface, borderColor: theme.border },
-                    (isOutOfStock || isAtLimit) && styles.itemCardDisabled,
-                  ]}>
-                  <ThemedText style={styles.itemName}>{item.name}</ThemedText>
-                  <ThemedText style={[styles.itemMeta, { color: theme.muted }]}>
-                    {format(item.price)} • {item.stock} in stock
-                  </ThemedText>
-                  {statusLabel ? (
-                    <View style={[styles.statusPill, { backgroundColor: theme.secondary }]}>
-                      <ThemedText style={[styles.statusText, { color: theme.onSecondary }]}>
-                        {statusLabel}
-                      </ThemedText>
-                    </View>
-                  ) : (
-                    <View style={[styles.itemButton, { backgroundColor: theme.primary }]}>
-                      <ThemedText style={styles.itemButtonText}>Add</ThemedText>
-                    </View>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <View
-          style={styles.section}
-          ref={cartRef}
+      <KeyboardAvoidingView
+        style={styles.keyboardWrap}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           onLayout={(event) => {
-            const { y, height } = event.nativeEvent.layout;
-            cartLayoutRef.current = { y, height };
-          }}>
-          <ThemedText type="subtitle">Cart</ThemedText>
-          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            {cart.length === 0 ? (
-              <View style={styles.emptyState}>
-                <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
-                  No items yet. Tap an item to add.
-                </ThemedText>
-              </View>
-            ) : (
-              cart.map((item, index) => (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.row,
-                    index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
-                  ]}>
-                  <View>
-                    <ThemedText style={styles.cartItemName}>{item.name}</ThemedText>
-                    <ThemedText style={[styles.cartMeta, { color: theme.muted }]}>
-                      {format(item.price)} each
+            scrollViewHeightRef.current = event.nativeEvent.layout.height;
+          }}
+          onScroll={(event) => {
+            scrollYRef.current = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}>
+          <View style={styles.header}>
+            <ThemedText type="title">POS</ThemedText>
+            <ThemedText style={[styles.caption, { color: theme.muted }]}>
+              Add items quickly, take payment, and send a receipt.
+            </ThemedText>
+          </View>
+
+          <SalesSummaryCard
+            summary={summary}
+            range={range}
+            customStart={customStart}
+            customEnd={customEnd}
+            onRangeChange={setRange}
+            onCustomStartChange={setCustomStart}
+            onCustomEndChange={setCustomEnd}
+          />
+
+          <Pressable
+            onPress={() => router.push('/receipts')}
+            style={[styles.receiptsButton, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <ThemedText style={styles.receiptsButtonText}>View receipt history</ThemedText>
+          </Pressable>
+
+          <QuickAddGrid
+            items={items}
+            cartQuantities={cartQuantities}
+            searchQuery={quickSearch}
+            showAll={showAllQuick}
+            onSearchChange={setQuickSearch}
+            onShowAllToggle={() => setShowAllQuick((prev) => !prev)}
+            onAddToCart={addToCart}
+          />
+
+          <CartView
+            cart={cart}
+            qtyInputs={qtyInputs}
+            subtotal={subtotal}
+            onUpdateQty={updateQty}
+            onQtyInputChange={updateQtyInput}
+            onQtyInputBlur={commitQtyInput}
+            onLayout={(event) => {
+              const { y, height } = event.nativeEvent.layout;
+              cartLayoutRef.current = { y, height };
+            }}
+          />
+
+          {paymentMethod !== 'Pay Later' && (
+            <View style={[styles.customerCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+              <Pressable
+                onPress={() => setShowCustomerDetails((prev) => !prev)}
+                style={styles.customerHeader}
+                accessibilityRole="button">
+                <View>
+                  <ThemedText style={styles.customerTitle}>Customer details (optional)</ThemedText>
+                  <ThemedText style={[styles.customerSubtitle, { color: theme.muted }]}>
+                    {customerName.trim()
+                      ? customerName
+                      : customerPhone.trim()
+                        ? customerPhone
+                        : 'Add customer name or phone'}
+                  </ThemedText>
+                </View>
+                <View style={[styles.chevron, { borderColor: theme.border }]}>
+                  <ThemedText style={styles.chevronText}>{showCustomerDetails ? '−' : '+'}</ThemedText>
+                </View>
+              </Pressable>
+
+              {showCustomerDetails && (
+                <View style={styles.customerFields}>
+                  <Pressable
+                    onPress={handlePickContact}
+                    style={[styles.contactButton, { borderColor: theme.border }]}>
+                    <ThemedText style={styles.contactButtonText}>
+                      {contactsLoading ? 'Loading contacts...' : 'Pick from contacts'}
                     </ThemedText>
-                  </View>
-                  <View style={styles.qtyControl}>
-                    <Pressable
-                      onPress={() => updateQty(item.id, -1)}
-                      style={[styles.qtyButton, { borderColor: theme.border }]}>
-                      <ThemedText style={styles.qtyText}>-</ThemedText>
-                    </Pressable>
+                  </Pressable>
+                  <View style={styles.inputRow}>
+                    <ThemedText style={[styles.inputLabel, { color: theme.muted }]}>Customer name</ThemedText>
                     <TextInput
-                      value={qtyInputs[item.id] ?? String(item.qty)}
-                      onChangeText={(value) => updateQtyInput(item.id, value)}
-                      onBlur={() => commitQtyInput(item.id)}
-                      keyboardType="number-pad"
+                      value={customerName}
+                      onChangeText={setCustomerName}
+                      placeholder="e.g. Amina Yusuf"
+                      placeholderTextColor={theme.muted}
                       style={[
-                        styles.qtyInput,
-                        { borderColor: theme.border, color: theme.text },
+                        styles.textInput,
+                        { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
                       ]}
                     />
-                    <Pressable
-                      onPress={() => updateQty(item.id, 1)}
-                      disabled={item.qty >= item.stock}
+                  </View>
+                  <View style={styles.inputRow}>
+                    <ThemedText style={[styles.inputLabel, { color: theme.muted }]}>Phone number</ThemedText>
+                    <TextInput
+                      value={customerPhone}
+                      onChangeText={setCustomerPhone}
+                      keyboardType="phone-pad"
+                      placeholder="0803 000 0000"
+                      placeholderTextColor={theme.muted}
                       style={[
-                        styles.qtyButton,
-                        { borderColor: theme.border },
-                        item.qty >= item.stock && styles.qtyButtonDisabled,
-                      ]}>
-                      <ThemedText style={styles.qtyText}>+</ThemedText>
-                    </Pressable>
+                        styles.textInput,
+                        { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
+                      ]}
+                    />
                   </View>
-                </View>
-              ))
-            )}
-            <View style={[styles.totalRow, { borderTopColor: theme.border }]}>
-              <ThemedText style={[styles.totalLabel, { color: theme.muted }]}>Total</ThemedText>
-              <ThemedText style={styles.totalValue}>{format(subtotal)}</ThemedText>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <ThemedText type="subtitle">Payment</ThemedText>
-          <View style={styles.paymentRow}>
-            {paymentMethods.map((method) => (
-              <Pressable
-                key={method}
-                onPress={() => setPaymentMethod(method)}
-                style={[
-                  styles.paymentChip,
-                  {
-                    backgroundColor: paymentMethod === method ? theme.primary : theme.surface,
-                    borderColor: theme.border,
-                  },
-                ]}>
-                <ThemedText
-                  style={[
-                    styles.paymentText,
-                    { color: paymentMethod === method ? '#FFFFFF' : theme.text },
-                  ]}>
-                  {method}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-
-          <View
-            style={[
-              styles.card,
-              styles.paymentCard,
-              { borderColor: theme.border, backgroundColor: theme.surface },
-            ]}>
-            <View style={styles.inputRow}>
-              <ThemedText style={[styles.inputLabel, { color: theme.muted }]}>
-                Amount received
-              </ThemedText>
-              <TextInput
-                value={amountReceived}
-                onChangeText={(value) => {
-                  if (value.trim() === '') {
-                    setAmountReceived('');
-                    return;
-                  }
-                  const parsed = Number(value);
-                  if (!Number.isFinite(parsed)) {
-                    return;
-                  }
-                  const clamped = Math.min(parsed, subtotal);
-                  if (parsed > subtotal && !amountWarnedRef.current) {
-                    amountWarnedRef.current = true;
-                    Alert.alert('Amount limit', 'Amount received cannot exceed the total.');
-                  }
-                  if (parsed <= subtotal) {
-                    amountWarnedRef.current = false;
-                  }
-                  setAmountReceived(String(Math.floor(clamped)));
-                }}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={theme.muted}
-                style={[
-                  styles.textInput,
-                  { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
-                ]}
-              />
-            </View>
-
-            {paymentMethod === 'Pay Later' && (
-              <View style={styles.inputGroup}>
-                <View style={styles.inputRow}>
-                  <ThemedText style={[styles.inputLabel, { color: theme.muted }]}>
-                    Customer name
-                  </ThemedText>
-                  <TextInput
-                    value={customerName}
-                    onChangeText={setCustomerName}
-                    placeholder="KudiBase Stores"
-                    placeholderTextColor={theme.muted}
-                    style={[
-                      styles.textInput,
-                      { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
-                    ]}
-                  />
-                </View>
-                <View style={styles.inputRow}>
-                  <ThemedText style={[styles.inputLabel, { color: theme.muted }]}>
-                    Phone number
-                  </ThemedText>
-                  <TextInput
-                    value={customerPhone}
-                    onChangeText={setCustomerPhone}
-                    keyboardType="phone-pad"
-                    placeholder="0803 000 0000"
-                    placeholderTextColor={theme.muted}
-                    style={[
-                      styles.textInput,
-                      { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
-                    ]}
-                  />
-                </View>
-                <View style={styles.inputRow}>
-                  <ThemedText style={[styles.inputLabel, { color: theme.muted }]}>
-                    Due date
-                  </ThemedText>
-                  <Pressable
-                    onPress={() => setShowDueDatePicker(true)}
-                    style={[
-                      styles.dateField,
-                      { borderColor: theme.border, backgroundColor: theme.surface },
-                    ]}>
-                    <ThemedText style={styles.dateFieldText}>
-                      {formatDateLabel(dueDate)}
-                    </ThemedText>
-                  </Pressable>
-                </View>
-                <View style={styles.balanceRow}>
-                  <ThemedText style={[styles.balanceLabel, { color: theme.muted }]}>
-                    Balance due
-                  </ThemedText>
-                  <ThemedText style={styles.balanceValue}>{format(balanceDue)}</ThemedText>
-                </View>
-              </View>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Pressable
-            onPress={() => setShowBreakdown((prev) => !prev)}
-            style={[
-              styles.breakdownToggle,
-              { borderColor: theme.border, backgroundColor: theme.surface },
-            ]}>
-            <ThemedText style={styles.breakdownToggleText}>
-              {showBreakdown ? 'Hide' : 'Show'} payment breakdown
-            </ThemedText>
-          </Pressable>
-          {showBreakdown && (
-            <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-              {summary.byMethod.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
-                    No sales recorded yet.
-                  </ThemedText>
-                </View>
-              ) : (
-                summary.byMethod.map((row, index) => (
-                  <View
-                    key={row.method}
-                    style={[
-                      styles.row,
-                      index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
-                    ]}>
-                    <View>
-                      <ThemedText style={styles.cartItemName}>{row.method}</ThemedText>
-                      <ThemedText style={[styles.cartMeta, { color: theme.muted }]}>
-                        {row.saleCount} sales
-                      </ThemedText>
+                  {recentCustomers.length > 0 ? (
+                    <View style={styles.recentBlock}>
+                      <ThemedText style={[styles.inputLabel, { color: theme.muted }]}>Recent customers</ThemedText>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        {recentCustomers.map((customer) => (
+                          <Pressable
+                            key={`${customer.name}-${customer.phone ?? ''}`}
+                            onPress={() => handleSelectCustomer(customer.name, customer.phone)}
+                            style={[styles.recentChip, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                            <ThemedText style={styles.recentChipText}>{customer.name}</ThemedText>
+                          </Pressable>
+                        ))}
+                      </ScrollView>
                     </View>
-                    <View style={styles.breakdownValues}>
-                      <ThemedText style={styles.breakdownValue}>
-                        {format(row.totalSales)}
-                      </ThemedText>
-                      <ThemedText style={[styles.breakdownMeta, { color: theme.muted }]}>
-                        {format(row.totalPaid)} collected
-                      </ThemedText>
-                    </View>
-                  </View>
-                ))
+                  ) : null}
+                </View>
               )}
             </View>
           )}
-        </View>
 
-        <Pressable
-          style={[styles.primaryButton, { backgroundColor: theme.primary }]}
-          onPress={handleCompleteSale}>
-          <ThemedText style={styles.primaryButtonText}>Complete sale</ThemedText>
+          <PaymentMethodPicker selected={paymentMethod} onSelect={setPaymentMethod} />
+
+          {paymentMethod === 'Pay Later' && (
+            <PayLaterForm
+              customerName={customerName}
+              customerPhone={customerPhone}
+              dueDate={dueDate}
+              balanceDue={balanceDue}
+              amountReceived={amountReceived}
+              subtotal={subtotal}
+              onCustomerNameChange={setCustomerName}
+              onCustomerPhoneChange={setCustomerPhone}
+              onDueDateChange={setDueDate}
+              onAmountReceivedChange={setAmountReceived}
+              onPickContact={handlePickContact}
+              recentCustomers={recentCustomers}
+              onSelectRecent={handleSelectCustomer}
+            />
+          )}
+
+          <PaymentBreakdown
+            byMethod={summary.byMethod}
+            visible={showBreakdown}
+            onToggle={() => setShowBreakdown((prev) => !prev)}
+          />
+
+          <Pressable
+            style={[styles.primaryButton, { backgroundColor: theme.primary }]}
+            onPress={handleCompleteSale}>
+            <ThemedText style={styles.primaryButtonText}>Complete sale</ThemedText>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+      <Modal visible={contactsVisible} transparent animationType="fade" onRequestClose={() => setContactsVisible(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setContactsVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: theme.surface }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">Pick a contact</ThemedText>
+              <Pressable onPress={() => setContactsVisible(false)}>
+                <ThemedText style={styles.modalDone}>Done</ThemedText>
+              </Pressable>
+            </View>
+            <TextInput
+              value={contactSearch}
+              onChangeText={setContactSearch}
+              placeholder="Search contacts"
+              placeholderTextColor={theme.muted}
+              style={[
+                styles.searchInput,
+                { borderColor: theme.border, backgroundColor: theme.surface, color: theme.text },
+              ]}
+            />
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.contactsList}
+              scrollEventThrottle={16}
+              onScroll={({ nativeEvent }) => {
+                const paddingToBottom = 32;
+                const atBottom =
+                  nativeEvent.layoutMeasurement.height + nativeEvent.contentOffset.y >=
+                  nativeEvent.contentSize.height - paddingToBottom;
+                if (atBottom) {
+                  handleLoadMoreContacts();
+                }
+              }}>
+              {filteredContacts.length === 0 ? (
+                <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
+                  {contactsHasNext ? 'Searching more contacts…' : 'No contacts found.'}
+                </ThemedText>
+              ) : (
+                filteredContacts.map((contact) => (
+                  <Pressable
+                    key={contact.id}
+                    onPress={() => {
+                      handleSelectCustomer(contact.name, contact.phone);
+                      setContactsVisible(false);
+                    }}
+                    style={[styles.contactRow, { borderColor: theme.border }]}>
+                    <View>
+                      <ThemedText style={styles.contactName}>{contact.name}</ThemedText>
+                      <ThemedText style={[styles.contactPhone, { color: theme.muted }]}>
+                        {contact.phone}
+                      </ThemedText>
+                    </View>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+            {contactsHasNext && !contactsLoadingMore ? (
+              <Pressable
+                onPress={handleLoadMoreContacts}
+                style={styles.loadMoreHint}>
+                <ThemedText style={[styles.loadMoreText, { color: theme.muted }]}>
+                  Scroll or tap to load more
+                </ThemedText>
+              </Pressable>
+            ) : null}
+          </Pressable>
         </Pressable>
-      </ScrollView>
+      </Modal>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardWrap: { flex: 1 },
   scrollContent: {
     padding: 20,
     paddingBottom: 40,
@@ -822,102 +735,6 @@ const styles = StyleSheet.create({
   },
   header: { gap: 8 },
   caption: { fontSize: 14 },
-  section: { gap: 12 },
-  itemGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  itemCard: {
-    width: '48%',
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    gap: 8,
-  },
-  itemCardDisabled: {
-    opacity: 0.5,
-  },
-  itemName: { fontSize: 15 },
-  itemMeta: { fontSize: 12 },
-  itemButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  itemButtonText: { color: '#FFFFFF', fontSize: 12 },
-  statusPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  statusText: {
-    fontSize: 11,
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  paymentCard: {
-    padding: 16,
-    gap: 12,
-  },
-  emptyState: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  emptyText: { fontSize: 13 },
-  summaryHeader: {
-    gap: 10,
-  },
-  rangeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  rangeChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  customRangeRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  dateChip: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  dateText: {
-    fontSize: 12,
-  },
-  dateField: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    justifyContent: 'center',
-  },
-  dateFieldText: {
-    fontSize: 14,
-  },
-  breakdownToggle: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  breakdownToggleText: {
-    fontSize: 13,
-  },
   receiptsButton: {
     borderRadius: 12,
     borderWidth: 1,
@@ -929,121 +746,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0F6A3D',
   },
-  linkChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  linkChipText: {
-    fontSize: 12,
-    color: '#0F6A3D',
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
+  customerCard: {
     borderRadius: 16,
+    borderWidth: 1,
     padding: 16,
     gap: 12,
   },
-  modalHeader: {
+  customerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  modalDone: {
-    fontSize: 14,
-    color: '#0F6A3D',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    padding: 16,
     gap: 12,
   },
-  summaryBlock: {
-    flex: 1,
-    gap: 4,
+  customerTitle: {
+    fontSize: 13,
+    fontWeight: '600',
   },
-  summaryLabel: {
+  customerSubtitle: {
     fontSize: 12,
+    marginTop: 4,
   },
-  summaryValue: {
-    fontSize: 16,
+  customerFields: {
+    gap: 12,
   },
-  summaryMeta: {
-    fontSize: 11,
-  },
-  row: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  rowDivider: { borderTopWidth: 1 },
-  cartItemName: { fontSize: 15 },
-  cartMeta: { fontSize: 12 },
-  qtyControl: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  qtyButton: {
+  chevron: {
+    borderWidth: 1,
+    borderRadius: 999,
     width: 28,
     height: 28,
-    borderRadius: 8,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  qtyButtonDisabled: {
-    opacity: 0.4,
+  chevronText: {
+    fontSize: 18,
+    lineHeight: 20,
   },
-  qtyText: { fontSize: 16 },
-  qtyInput: {
-    minWidth: 56,
-    width: 56,
-    height: 32,
-    borderWidth: 1,
-    borderRadius: 8,
-    textAlign: 'center',
-    fontSize: 14,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    includeFontPadding: false,
+  inputRow: {
+    gap: 6,
   },
-  totalRow: {
-    borderTopWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  inputLabel: {
+    fontSize: 12,
   },
-  totalLabel: { fontSize: 12 },
-  totalValue: { fontSize: 18 },
-  breakdownValues: {
-    alignItems: 'flex-end',
-  },
-  breakdownValue: {
-    fontSize: 14,
-  },
-  breakdownMeta: {
-    fontSize: 11,
-  },
-  paymentRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  paymentChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  paymentText: { fontSize: 13 },
-  inputRow: { gap: 6 },
-  inputLabel: { fontSize: 12 },
   textInput: {
     borderWidth: 1,
     borderRadius: 12,
@@ -1052,17 +795,86 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Sora-Regular',
   },
-  inputGroup: {
-    marginTop: 16,
+  contactButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  contactButtonText: {
+    fontSize: 13,
+    color: '#0F6A3D',
+  },
+  recentBlock: {
+    gap: 8,
+  },
+  recentChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+  },
+  recentChipText: {
+    fontSize: 12,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '80%',
     gap: 12,
   },
-  balanceRow: {
-    marginTop: 8,
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  balanceLabel: { fontSize: 12 },
-  balanceValue: { fontSize: 16 },
+  modalDone: {
+    color: '#0F6A3D',
+    fontWeight: '600',
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    fontFamily: 'Sora-Regular',
+  },
+  contactsList: {
+    gap: 8,
+    paddingBottom: 8,
+  },
+  contactRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  contactName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  contactPhone: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  emptyText: {
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  loadMoreHint: {
+    alignItems: 'center',
+    paddingTop: 6,
+  },
+  loadMoreText: {
+    fontSize: 12,
+  },
   primaryButton: {
     paddingVertical: 16,
     borderRadius: 16,
