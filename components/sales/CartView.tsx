@@ -47,13 +47,15 @@ export function CartView({
                                 styles.row,
                                 index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
                             ]}>
-                            <View>
-                                <ThemedText style={styles.cartItemName}>{item.name}</ThemedText>
+                            <View style={{ flex: 1, paddingRight: 10 }}>
+                                <ThemedText style={styles.cartItemName} numberOfLines={2} ellipsizeMode="tail">
+                                    {item.name}
+                                </ThemedText>
                                 <ThemedText style={[styles.cartMeta, { color: theme.muted }]}>
                                     {format(item.price)} each
                                 </ThemedText>
                             </View>
-                            <View style={styles.qtyControl}>
+                            <View style={[styles.qtyControl, { flexShrink: 0 }]}>
                                 <Pressable
                                     onPress={() => onUpdateQty(item.id, -1)}
                                     style={[styles.qtyButton, { borderColor: theme.border }]}>

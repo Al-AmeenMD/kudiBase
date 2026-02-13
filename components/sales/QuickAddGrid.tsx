@@ -74,18 +74,20 @@ export function QuickAddGrid({
                                 { backgroundColor: theme.surface, borderColor: theme.border },
                                 (isOutOfStock || isAtLimit) && styles.itemCardDisabled,
                             ]}>
-                            <ThemedText style={styles.itemName}>{item.name}</ThemedText>
+                            <ThemedText style={styles.itemName} numberOfLines={2} ellipsizeMode="tail">
+                                {item.name}
+                            </ThemedText>
                             <ThemedText style={[styles.itemMeta, { color: theme.muted }]}>
                                 {format(item.price)} • {item.stock} in stock
                             </ThemedText>
                             {statusLabel ? (
-                                <View style={[styles.statusPill, { backgroundColor: theme.secondary }]}>
+                                <View style={[styles.statusPill, { backgroundColor: theme.secondary, marginTop: 'auto' }]}>
                                     <ThemedText style={[styles.statusText, { color: theme.onSecondary }]}>
                                         {statusLabel}
                                     </ThemedText>
                                 </View>
                             ) : (
-                                <View style={[styles.itemButton, { backgroundColor: theme.primary }]}>
+                                <View style={[styles.itemButton, { backgroundColor: theme.primary, marginTop: 'auto' }]}>
                                     <ThemedText style={styles.itemButtonText}>Add</ThemedText>
                                 </View>
                             )}

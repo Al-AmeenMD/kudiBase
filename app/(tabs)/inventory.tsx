@@ -1,7 +1,6 @@
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import { useRouter } from 'expo-router';
+import { Alert, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -51,7 +50,7 @@ export default function InventoryScreen() {
         setShowLowStock(false);
       }
     }
-    loadPreferences().catch(() => {});
+    loadPreferences().catch(() => { });
     loadItems().catch((error) => {
       Alert.alert('Load error', 'Unable to load inventory data.');
       console.error(error);
@@ -157,11 +156,13 @@ export default function InventoryScreen() {
                     styles.row,
                     index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
                   ]}>
-                  <View>
-                    <ThemedText style={styles.itemName}>{item.name}</ThemedText>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <ThemedText style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">
+                      {item.name}
+                    </ThemedText>
                     <ThemedText style={styles.itemMeta}>{item.status}</ThemedText>
                   </View>
-                  <View style={[styles.stockPill, { backgroundColor: theme.secondary }]}>
+                  <View style={[styles.stockPill, { backgroundColor: theme.secondary, flexShrink: 0 }]}>
                     <ThemedText style={[styles.stockText, { color: theme.onSecondary }]}>
                       {item.stock}
                     </ThemedText>
@@ -177,7 +178,7 @@ export default function InventoryScreen() {
             onPress={() => {
               setShowLowStock((prev) => {
                 const next = !prev;
-                setAppSetting('inventory_low_stock_visible', next ? 'true' : 'false').catch(() => {});
+                setAppSetting('inventory_low_stock_visible', next ? 'true' : 'false').catch(() => { });
                 return next;
               });
             }}
@@ -208,11 +209,13 @@ export default function InventoryScreen() {
                       styles.row,
                       index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
                     ]}>
-                    <View>
-                      <ThemedText style={styles.itemName}>{item.name}</ThemedText>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <ThemedText style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">
+                        {item.name}
+                      </ThemedText>
                       <ThemedText style={styles.itemMeta}>Low stock</ThemedText>
                     </View>
-                    <View style={[styles.stockPill, { backgroundColor: theme.secondary }]}>
+                    <View style={[styles.stockPill, { backgroundColor: theme.secondary, flexShrink: 0 }]}>
                       <ThemedText style={[styles.stockText, { color: theme.onSecondary }]}>
                         {item.stock}
                       </ThemedText>
