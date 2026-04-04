@@ -1,3 +1,4 @@
+import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
@@ -48,8 +49,13 @@ export default function BackupScreen() {
   const driveIds = getDriveClientIds();
   const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
 
-  // Force Proxy URI for Expo Go
-  const proxyRedirectUri = 'https://auth.expo.io/@al_ameenmd/kudibase';
+  // Explicitly generate the redirect URI
+  const redirectUri = makeRedirectUri({
+    native: 'kudibase://',
+  });
+
+  // For Expo Go, use the specific proxy. For native/dev builds, use the generated one.
+  const finalRedirectUri = isExpoGo ? 'https://auth.expo.io/@al_ameenmd/kudibase' : redirectUri;
 
   const [request, response, promptAsync] = Google.useAuthRequest({
     // In Expo Go, strictly use the Web Client ID (generic clientId)
@@ -58,9 +64,9 @@ export default function BackupScreen() {
     androidClientId: isExpoGo ? undefined : driveIds.androidClientId,
     webClientId: driveIds.webClientId,
 
-    // Force Web Client ID and Proxy Redirect for Expo Go
+    // Force Valid Redirect URI
     clientId: isExpoGo ? driveIds.webClientId : undefined,
-    redirectUri: isExpoGo ? proxyRedirectUri : undefined,
+    redirectUri: finalRedirectUri,
     scopes: [getDriveScope()],
   });
 
@@ -211,6 +217,8 @@ export default function BackupScreen() {
       Alert.alert('Missing config', 'Please configure Google Drive Client IDs in app.json');
       return;
     }
+    // Debug info for user
+    console.log('Initiating Google Auth with URI:', finalRedirectUri);
     promptAsync();
   }
 
@@ -329,7 +337,7 @@ export default function BackupScreen() {
                   </Pressable>
                   {/* Debugging Info for User */}
                   <ThemedText style={[styles.cardMeta, { marginTop: 8, fontSize: 10, fontFamily: 'monospace' }]}>
-                    Redirect: {request?.redirectUri || 'Loading...'}{'\n'}
+                    Redirect: {finalRedirectUri}{'\n'}
                     ClientID: {request?.clientId?.slice(0, 15)}...
                   </ThemedText>
                 </View>
