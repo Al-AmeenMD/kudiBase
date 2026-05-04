@@ -8,7 +8,7 @@ module.exports = function withAdiRegistration(config) {
     async (config) => {
       const targetPath = path.join(config.modRequest.platformProjectRoot, 'app', 'src', 'main', 'assets');
       fs.mkdirSync(targetPath, { recursive: true });
-      fs.writeFileSync(path.join(targetPath, 'adi-registration.properties'), 'CGK6G5NCXTTNWAAAAAAAAAAA');
+      fs.writeFileSync(path.join(targetPath, 'adi-registration.properties'), 'CGK6G5NCXTTNWAAAAAAAAAAAAA');
       return config;
     },
   ]);

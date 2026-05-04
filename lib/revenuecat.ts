@@ -1,4 +1,4 @@
-import Purchases, { CustomerInfo, PackageType, PurchasesPackage } from 'react-native-purchases';
+import Purchases, { CustomerInfo, PurchasesPackage } from 'react-native-purchases';
 import PurchasesUI from 'react-native-purchases-ui';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
@@ -82,7 +82,7 @@ export async function getMonthlyPackage(): Promise<PurchasesPackage | null> {
   }
   const offerings = await Purchases.getOfferings();
   const available = offerings.current?.availablePackages ?? [];
-  return available.find((pkg) => pkg.packageType === PackageType.MONTHLY) ?? null;
+  return available.find((pkg) => pkg.packageType === '$rc_monthly') ?? null;
 }
 
 export async function getAnnualPackage(): Promise<PurchasesPackage | null> {
@@ -92,7 +92,7 @@ export async function getAnnualPackage(): Promise<PurchasesPackage | null> {
   }
   const offerings = await Purchases.getOfferings();
   const available = offerings.current?.availablePackages ?? [];
-  return available.find((pkg) => pkg.packageType === PackageType.ANNUAL) ?? null;
+  return available.find((pkg) => pkg.packageType === '$rc_annual') ?? null;
 }
 
 export async function purchasePackage(pkg: PurchasesPackage): Promise<CustomerInfo | null> {
@@ -100,7 +100,7 @@ export async function purchasePackage(pkg: PurchasesPackage): Promise<CustomerIn
   if (!ok) {
     return null;
   }
-  const result = await Purchases.purchasePackage(pkg);
+  const result = await withTimeout(Purchases.purchasePackage(pkg), 30000);
   return result.customerInfo;
 }
 

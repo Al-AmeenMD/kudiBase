@@ -691,9 +691,9 @@ export default function SalesScreen() {
                   {contactsHasNext ? 'Searching more contacts…' : 'No contacts found.'}
                 </ThemedText>
               ) : (
-                filteredContacts.map((contact) => (
+                filteredContacts.map((contact, index) => (
                   <Pressable
-                    key={contact.id}
+                    key={`${contact.id}-${index}`}
                     onPress={() => {
                       handleSelectCustomer(contact.name, contact.phone);
                       setContactsVisible(false);

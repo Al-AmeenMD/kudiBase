@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getBusinessProfile, initDb, setAppSetting, upsertBusinessProfile } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 
 export default function OnboardingScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -20,6 +21,7 @@ export default function OnboardingScreen() {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [saving, setSaving] = useState(false);
@@ -49,14 +51,37 @@ export default function OnboardingScreen() {
     try {
       setSaving(true);
       await initDb();
-      if (!skipProfile) {
+      if (!skipProfile || source !== 'settings') {
         if (!businessName.trim()) {
           Alert.alert('Business name required', 'Enter your business name to continue.');
           return;
         }
-        if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-          Alert.alert('Invalid email', 'Enter a valid email or leave it blank.');
+        if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+          Alert.alert('Invalid email', 'A valid email is required to register your account.');
           return;
+        }
+
+        if (source !== 'settings') {
+          if (!password.trim() || password.length < 6) {
+            Alert.alert('Password required', 'Please enter a secure password (at least 6 characters).');
+            return;
+          }
+          
+          const { error: signUpError } = await supabase.auth.signUp({
+            email: email.trim(),
+            password: password.trim(),
+            options: {
+              data: {
+                business_name: businessName.trim(),
+                owner_name: ownerName.trim(),
+              }
+            }
+          });
+
+          if (signUpError) {
+            Alert.alert('Registration failed', signUpError.message || 'Please check your internet connection.');
+            return;
+          }
         }
         await upsertBusinessProfile({
           businessName: businessName.trim(),
@@ -122,12 +147,21 @@ export default function OnboardingScreen() {
               placeholder="08030000000"
             />
             <InputRow
-              label="Email (optional)"
+              label="Email"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               placeholder="hello@yourshop.com"
             />
+            {source !== 'settings' && (
+              <InputRow
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Secure password"
+                secureTextEntry={true}
+              />
+            )}
             <InputRow
               label="Address (optional)"
               value={address}
@@ -157,12 +191,14 @@ export default function OnboardingScreen() {
           </ScrollView>
 
           <View style={styles.actions}>
-            <Pressable
-              onPress={() => handleComplete(true)}
-              disabled={saving}
-              style={[styles.secondaryButton, { borderColor: theme.border }]}>
-              <ThemedText style={[styles.secondaryText, { color: theme.text }]}>Skip for now</ThemedText>
-            </Pressable>
+            {source === 'settings' && (
+              <Pressable
+                onPress={() => handleComplete(true)}
+                disabled={saving}
+                style={[styles.secondaryButton, { borderColor: theme.border }]}>
+                <ThemedText style={[styles.secondaryText, { color: theme.text }]}>Skip for now</ThemedText>
+              </Pressable>
+            )}
             <Pressable
               onPress={() => handleComplete(false)}
               disabled={saving}
@@ -184,12 +220,14 @@ function InputRow({
   onChangeText,
   keyboardType,
   placeholder,
+  secureTextEntry,
 }: {
   label: string;
   value: string;
   onChangeText: (text: string) => void;
   keyboardType?: 'default' | 'phone-pad' | 'email-address' | 'number-pad';
   placeholder?: string;
+  secureTextEntry?: boolean;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -201,6 +239,7 @@ function InputRow({
         value={value}
         onChangeText={onChangeText}
         keyboardType={keyboardType}
+        secureTextEntry={secureTextEntry}
         placeholder={placeholder ?? label}
         placeholderTextColor={theme.muted}
         style={[

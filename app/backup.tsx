@@ -49,37 +49,12 @@ export default function BackupScreen() {
   const driveIds = getDriveClientIds();
   const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
 
-  // Explicitly generate the redirect URI
-  const redirectUri = makeRedirectUri({
-    native: 'kudibase://',
-  });
-
-  // For Expo Go, use the specific proxy. For native/dev builds, use the generated one.
-  const finalRedirectUri = isExpoGo ? 'https://auth.expo.io/@al_ameenmd/kudibase' : redirectUri;
-
   const [request, response, promptAsync] = Google.useAuthRequest({
-    // In Expo Go, strictly use the Web Client ID (generic clientId)
-    // We must UNDEFINE standard platform IDs or they will take precedence
-    iosClientId: isExpoGo ? undefined : driveIds.iosClientId,
-    androidClientId: isExpoGo ? undefined : driveIds.androidClientId,
-    webClientId: driveIds.webClientId,
-
-    // Force Valid Redirect URI
-    clientId: isExpoGo ? driveIds.webClientId : undefined,
-    redirectUri: finalRedirectUri,
+    iosClientId: driveIds.iosClientId || undefined,
+    androidClientId: driveIds.androidClientId || undefined,
+    webClientId: driveIds.webClientId || undefined,
     scopes: [getDriveScope()],
   });
-
-  // Debug logging
-  useEffect(() => {
-    if (request) {
-      console.log('Google Auth Request Configured:', {
-        redirectUri: request.redirectUri,
-        clientId: request.clientId,
-        isExpoGo
-      });
-    }
-  }, [request, isExpoGo]);
 
   useEffect(() => {
     isPremium()
@@ -217,8 +192,13 @@ export default function BackupScreen() {
       Alert.alert('Missing config', 'Please configure Google Drive Client IDs in app.json');
       return;
     }
-    // Debug info for user
-    console.log('Initiating Google Auth with URI:', finalRedirectUri);
+    if (isExpoGo) {
+      Alert.alert(
+        'Not available in Expo Go',
+        'Google Drive sync requires a production or development build. It will work after deployment.'
+      );
+      return;
+    }
     promptAsync();
   }
 
@@ -328,19 +308,12 @@ export default function BackupScreen() {
           {premium ? (
             <>
               {!driveConnected ? (
-                <View>
-                  <Pressable
-                    onPress={handleConnectDrive}
-                    disabled={!request}
-                    style={[styles.secondaryButton, { borderColor: theme.border, opacity: !request ? 0.5 : 1 }]}>
-                    <ThemedText style={styles.secondaryButtonText}>Connect Google Drive</ThemedText>
-                  </Pressable>
-                  {/* Debugging Info for User */}
-                  <ThemedText style={[styles.cardMeta, { marginTop: 8, fontSize: 10, fontFamily: 'monospace' }]}>
-                    Redirect: {finalRedirectUri}{'\n'}
-                    ClientID: {request?.clientId?.slice(0, 15)}...
-                  </ThemedText>
-                </View>
+                <Pressable
+                  onPress={handleConnectDrive}
+                  disabled={!request && !isExpoGo}
+                  style={[styles.secondaryButton, { borderColor: theme.border, opacity: (!request && !isExpoGo) ? 0.5 : 1 }]}>
+                  <ThemedText style={styles.secondaryButtonText}>Connect Google Drive</ThemedText>
+                </Pressable>
               ) : (
                 <>
                   <View style={styles.toggleRow}>
