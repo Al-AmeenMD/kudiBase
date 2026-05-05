@@ -1,5 +1,6 @@
 import { getAppSetting, setAppSetting } from '@/lib/db';
 import { getCustomerInfoSafe, hasPremiumEntitlement } from '@/lib/revenuecat';
+import { supabase } from '@/lib/supabase';
 
 export type PlanTier = 'free' | 'premium';
 
@@ -16,6 +17,27 @@ export async function getPlanTier(): Promise<PlanTier> {
 
 export async function setPlanTier(plan: PlanTier) {
   await setAppSetting(PLAN_KEY, plan);
+  await syncPremiumStatusToSupabase(plan);
+}
+
+/**
+ * Syncs the local plan tier to Supabase user metadata.
+ * This allows the Admin Dashboard to identify premium users.
+ */
+async function syncPremiumStatusToSupabase(plan: PlanTier) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Only sync if the metadata is different to avoid unnecessary network calls
+    if (user.user_metadata?.plan_tier === plan) return;
+
+    await supabase.auth.updateUser({
+      data: { plan_tier: plan }
+    });
+  } catch (error) {
+    console.error('Failed to sync premium status to Supabase:', error);
+  }
 }
 
 /**
@@ -35,8 +57,10 @@ export async function isPremium(): Promise<boolean> {
     const info = await getCustomerInfoSafe();
     if (info) {
       const premium = hasPremiumEntitlement(info);
-      // Update local cache to match RevenueCat
-      await setPlanTier(premium ? 'premium' : 'free');
+      const plan: PlanTier = premium ? 'premium' : 'free';
+      
+      // Update local cache and sync to Supabase
+      await setPlanTier(plan);
       return premium;
     }
   } catch (error) {

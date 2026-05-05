@@ -71,24 +71,23 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        <Stack.Screen name="receipt" options={{ headerShown: false }} />
-        <Stack.Screen name="receipts" options={{ headerShown: false }} />
-        <Stack.Screen name="profile" options={{ headerShown: false }} />
-        <Stack.Screen name="reminder" options={{ headerShown: false }} />
-        <Stack.Screen name="backup" options={{ headerShown: false }} />
-        <Stack.Screen name="record-payment" options={{ headerShown: false }} />
-        <Stack.Screen name="inventory-item" options={{ headerShown: false }} />
-        <Stack.Screen name="stock-adjust" options={{ headerShown: false }} />
-        <Stack.Screen name="privacy" options={{ headerShown: false }} />
-        <Stack.Screen name="help" options={{ headerShown: false }} />
-        <Stack.Screen name="sales-records" options={{ headerShown: false }} />
-        <Stack.Screen name="premium" options={{ headerShown: false }} />
-        <Stack.Screen name="restore" options={{ headerShown: false }} />
-        <Stack.Screen name="manage-subscription" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" options={{ headerShown: false, presentation: 'transparentModal' }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', headerShown: true }} />
+        <Stack.Screen name="receipt" />
+        <Stack.Screen name="receipts" />
+        <Stack.Screen name="profile" />
+        <Stack.Screen name="reminder" />
+        <Stack.Screen name="backup" />
+        <Stack.Screen name="record-payment" />
+        <Stack.Screen name="inventory-item" />
+        <Stack.Screen name="stock-adjust" />
+        <Stack.Screen name="privacy" />
+        <Stack.Screen name="help" />
+        <Stack.Screen name="sales-records" />
+        <Stack.Screen name="premium" />
+        <Stack.Screen name="restore" />
+        <Stack.Screen name="manage-subscription" />
       </Stack>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>

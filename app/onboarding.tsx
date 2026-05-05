@@ -10,7 +10,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getBusinessProfile, initDb, setAppSetting, upsertBusinessProfile } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 
-export default function OnboardingScreen() {
+function OnboardingScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const router = useRouter();
@@ -317,3 +317,5 @@ const styles = StyleSheet.create({
   },
   secondaryText: { fontSize: 14 },
 });
+
+export default OnboardingScreen;

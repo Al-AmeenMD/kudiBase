@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { logout } from './actions';
 
+import Image from 'next/image';
+
 export default function Sidebar() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -18,7 +20,13 @@ export default function Sidebar() {
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header-row">
         <div className="sidebar-logo">
-          <img src="/logo.png" alt="KudiBase Logo" className="logo-img" />
+          <Image 
+            src="/logo.png" 
+            alt="KudiBase Logo" 
+            width={36} 
+            height={36} 
+            className="logo-img" 
+          />
           {!isCollapsed && <span>KudiBase Admin</span>}
         </div>
         <button 

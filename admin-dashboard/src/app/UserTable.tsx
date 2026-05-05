@@ -43,7 +43,7 @@ export default function UserTable({
               <tr>
                 <td colSpan={4} className="empty-state">
                   <div className="empty-icon">🔍</div>
-                  <p>No users found matching "{initialQuery}"</p>
+                  <p>No users found matching &quot;{initialQuery}&quot;</p>
                 </td>
               </tr>
             ) : (
@@ -55,16 +55,35 @@ export default function UserTable({
                         {user.email?.[0].toUpperCase()}
                       </div>
                       <div>
-                        <div className="user-email">{user.email}</div>
+                        <div className="user-email">
+                          {user.email}
+                          <button 
+                            className="btn-copy-mini" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(user.email || '');
+                            }}
+                            title="Copy Email"
+                          >
+                            📋
+                          </button>
+                        </div>
                         <div className="user-business">
                           {user.user_metadata?.business_name || 'Individual'} 
                           {user.user_metadata?.owner_name ? ` • ${user.user_metadata.owner_name}` : ''}
+                          {user.user_metadata?.plan_tier === 'premium' && (
+                            <span className="badge badge-premium" style={{ marginLeft: '8px' }}>PRO</span>
+                          )}
                         </div>
                       </div>
                     </div>
                   </td>
                   <td>
-                    <span className="badge badge-active">Active</span>
+                    {user.banned_until && user.banned_until !== 'none' ? (
+                      <span className="badge badge-danger">Banned</span>
+                    ) : (
+                      <span className="badge badge-active">Active</span>
+                    )}
                   </td>
                   <td>
                     <div className="date-cell">

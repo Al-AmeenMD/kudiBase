@@ -15,7 +15,11 @@ export async function login(formData: FormData) {
     .eq('key', 'master_password')
     .single();
 
-  const adminPassword = dbPass?.value || process.env.ADMIN_PASSWORD || 'admin123';
+  const adminPassword = dbPass?.value || process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword) {
+    throw new Error('Critical: Master password not configured in environment or database.');
+  }
 
   if (password === adminPassword) {
     const cookieStore = await cookies();
@@ -81,7 +85,7 @@ export async function sendResetEmail(email: string) {
   if (error) throw error;
 }
 
-export async function updateUserMetadata(userId: string, metadata: any) {
+export async function updateUserMetadata(userId: string, metadata: Record<string, unknown>) {
   const cookieStore = await cookies();
   const isAuthenticated = cookieStore.get('admin_auth')?.value === 'true';
   if (!isAuthenticated) throw new Error('Unauthorized');

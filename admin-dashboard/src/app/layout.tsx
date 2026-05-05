@@ -13,10 +13,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KudiBase Admin",
-  description: "Administrative dashboard for KudiBase",
+  title: "KudiBase Admin | Secure Dashboard",
+  description: "Administrative dashboard for KudiBase - Nigeria's favorite POS app for small businesses.",
+  keywords: ["POS", "Inventory", "Sales", "Nigeria", "Business", "Admin"],
+  authors: [{ name: "Al-Ameen Muhammad" }],
+  openGraph: {
+    title: "KudiBase Admin",
+    description: "Manage your business efficiently with KudiBase.",
+    images: ["/icon.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "KudiBase Admin",
+    description: "Administrative dashboard for KudiBase.",
+    images: ["/icon.png"],
+  },
   icons: {
-    icon: "/logo.png",
+    icon: "/favicon.ico",
+    apple: "/icon.png",
   },
 };
 

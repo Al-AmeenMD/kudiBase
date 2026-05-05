@@ -72,8 +72,8 @@
     },
     "extra": {
       "revenuecat": {
-        "androidApiKey": "REVENUECAT_ANDROID_KEY",
-        "iosApiKey": "REVENUECAT_IOS_KEY",
+        "androidApiKey": "REVENUECAT_ANDROID_API_KEY",
+        "iosApiKey": "REVENUECAT_IOS_API_KEY",
         "entitlement": "kudibase_pro"
       },
       "googleDrive": {

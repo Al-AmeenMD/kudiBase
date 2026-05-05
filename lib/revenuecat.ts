@@ -28,23 +28,30 @@ function withTimeout<T>(promise: Promise<T>, ms: number) {
 }
 
 function getConfig(): RevenueCatConfig {
-  const config = Constants.expoConfig?.extra?.revenuecat as RevenueCatConfig | undefined;
-  return config ?? {};
+  return {
+    androidApiKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY,
+    iosApiKey: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY,
+    entitlement: process.env.EXPO_PUBLIC_REVENUECAT_ENTITLEMENT_ID ?? 'kudibase_pro',
+  };
 }
 
 export function getEntitlementId() {
-  return getConfig().entitlement ?? 'kudibase_pro';
+  return getConfig().entitlement!;
 }
 
 export async function configureRevenueCat() {
   if (configured) {
     return true;
   }
+  
   const config = getConfig();
   const apiKey = Platform.OS === 'ios' ? config.iosApiKey : config.androidApiKey;
+  
   if (!apiKey || apiKey.startsWith('REVENUECAT_')) {
+    console.warn('RevenueCat API key is missing or using placeholder.');
     return false;
   }
+
   Purchases.setLogLevel(Purchases.LOG_LEVEL.INFO);
   Purchases.configure({ apiKey });
   configured = true;

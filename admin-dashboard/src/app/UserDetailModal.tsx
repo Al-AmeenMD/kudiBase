@@ -6,18 +6,18 @@ import { toggleUserStatus, sendResetEmail } from './actions';
 
 export default function UserDetailModal({ user, onClose }: { user: User; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
-  // @ts-ignore - ban_duration might not be in the standard User type but is present in the response
+  // @ts-expect-error - ban_duration might not be in the standard User type but is present in the response
   const isBanned = user.ban_duration && user.ban_duration !== 'none';
 
   const handleToggleStatus = async () => {
     try {
       setLoading(true);
-      // @ts-ignore
+      // @ts-expect-error - ban_duration is present on the user object from Supabase Admin API
       await toggleUserStatus(user.id, user.ban_duration);
       alert(isBanned ? 'User unbanned successfully' : 'User banned successfully');
       onClose();
-    } catch (error: any) {
-      alert('Error: ' + error.message);
+    } catch (error) {
+      alert('Error: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -29,8 +29,8 @@ export default function UserDetailModal({ user, onClose }: { user: User; onClose
       setLoading(true);
       await sendResetEmail(user.email);
       alert('Password reset email sent to ' + user.email);
-    } catch (error: any) {
-      alert('Error: ' + error.message);
+    } catch (error) {
+      alert('Error: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }

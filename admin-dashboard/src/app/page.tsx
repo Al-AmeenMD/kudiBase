@@ -1,11 +1,9 @@
 import { cookies } from 'next/headers';
-import { login, logout, deleteUser } from './actions';
+import { login, deleteUser } from './actions';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import DeleteButton from './DeleteButton';
-import SearchInput from './SearchInput';
-import ExportButton from './ExportButton';
 import Sidebar from './Sidebar';
 import UserTable from './UserTable';
+import Image from 'next/image';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +15,13 @@ export default async function Dashboard() {
     return (
       <main className="login-container">
         <div className="glass-panel login-card">
-          <img src="/logo.png" alt="KudiBase Logo" className="login-logo" />
+          <Image 
+            src="/logo.png" 
+            alt="KudiBase Logo" 
+            width={80} 
+            height={80} 
+            className="login-logo" 
+          />
           <h1>KudiBase Admin</h1>
           <p>Enter master password to access the dashboard</p>
           <form action={login}>
@@ -39,7 +43,7 @@ export default async function Dashboard() {
   }
 
   // Fetch users if authenticated
-  const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+  const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
 
   // Calculate stats
   const totalUsers = users?.length || 0;
@@ -59,7 +63,7 @@ export default async function Dashboard() {
             <p>Dashboard Overview</p>
           </div>
           <div className="header-actions">
-            <span className="last-sync">Live Data</span>
+            <span className="last-sync live-pulse">Live Data</span>
           </div>
         </header>
 
@@ -90,10 +94,9 @@ export default async function Dashboard() {
           </div>
         </div>
 
-        {/* 
         <div className="glass-panel main-section">
           <div className="section-header">
-            <h2>Growth Overview</h2>
+            <h2>Registration Growth</h2>
           </div>
           <div className="chart-placeholder">
             <div className="chart-bar-container">
@@ -105,8 +108,13 @@ export default async function Dashboard() {
             </div>
             <p className="chart-caption">Daily user registrations (Last 7 days)</p>
           </div>
-        </div> 
-        */}
+        </div>
+
+        <UserTable 
+          users={users || []} 
+          initialQuery="" 
+          onDelete={deleteUser} 
+        />
       </main>
     </div>
   );
