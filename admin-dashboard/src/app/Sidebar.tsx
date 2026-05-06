@@ -13,6 +13,7 @@ export default function Sidebar() {
   const navItems = [
     { name: 'Dashboard', icon: '📊', href: '/' },
     { name: 'Users', icon: '👥', href: '/users' },
+    { name: 'Notifications', icon: '🔔', href: '/notifications' },
     { name: 'Security', icon: '🛡️', href: '/security' },
   ];
 

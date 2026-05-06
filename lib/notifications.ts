@@ -11,9 +11,6 @@ async function getNotifications() {
   if (Notifications) {
     return Notifications;
   }
-  if (isExpoGo()) {
-    return null;
-  }
   try {
     Notifications = await import('expo-notifications');
     return Notifications;
@@ -86,13 +83,13 @@ export async function scheduleDailyReminder() {
   }
   await notif.scheduleNotificationAsync({
     content: {
-      title: 'KudiBase reminder',
-      body: "Review today's sales and debts.",
+      title: 'Don\'t close today without this ✓',
+      body: "Record your sales and outstanding debts on KudiBase.",
       data: { key: DAILY_REMINDER_KEY },
     },
     trigger: {
       type: notif.SchedulableTriggerInputTypes.DAILY,
-      hour: 9,
+      hour: 18,
       minute: 0,
       ...(Platform.OS === 'android' ? { channelId: 'default' } : {}),
     },
@@ -128,7 +125,7 @@ export async function scheduleDebtReminder(params: {
   }
   await ensureNotificationChannel();
   const dueDate = new Date(params.dueDate);
-  dueDate.setHours(9, 0, 0, 0);
+  dueDate.setHours(18, 0, 0, 0);
   if (dueDate.getTime() <= Date.now()) {
     return null;
   }
@@ -155,4 +152,40 @@ export async function cancelDebtReminder(notificationId?: string | null) {
     return;
   }
   await notif.cancelScheduledNotificationAsync(notificationId);
+}
+
+export async function getPushToken() {
+  const notif = await getNotifications();
+  if (!notif) {
+    console.log('getNotifications returned null');
+    return null;
+  }
+
+  const { status: existingStatus } = await notif.getPermissionsAsync();
+  let finalStatus = existingStatus;
+  console.log('Initial notification permission status:', existingStatus);
+  if (existingStatus !== 'granted') {
+    const { status } = await notif.requestPermissionsAsync();
+    finalStatus = status;
+    console.log('Permission request result:', status);
+  }
+  if (finalStatus !== 'granted') {
+    console.log('Permission not granted');
+    return null;
+  }
+
+  try {
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+    console.log('Using Project ID for push token:', projectId);
+    if (!projectId) {
+      console.warn('Project ID not found in expo-constants');
+    }
+    const tokenResult = await notif.getExpoPushTokenAsync({ projectId });
+    console.log('Expo push token result object:', tokenResult);
+    return tokenResult.data;
+  } catch (error) {
+    console.error('Error fetching push token in getPushToken:', error);
+    return null;
+  }
 }

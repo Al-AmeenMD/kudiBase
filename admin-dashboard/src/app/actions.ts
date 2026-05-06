@@ -98,3 +98,53 @@ export async function updateUserMetadata(userId: string, metadata: Record<string
   revalidatePath('/');
 }
 
+export async function sendPushNotification(title: string, body: string, data?: Record<string, unknown>) {
+  const cookieStore = await cookies();
+  const isAuthenticated = cookieStore.get('admin_auth')?.value === 'true';
+  if (!isAuthenticated) throw new Error('Unauthorized');
+
+  // Fetch all tokens
+  const { data: tokens, error } = await supabaseAdmin
+    .from('push_tokens')
+    .select('token');
+
+  if (error) throw error;
+  if (!tokens || tokens.length === 0) return { success: true, sentCount: 0 };
+
+  const pushTokens = tokens.map(t => t.token);
+  
+  // Expo push API limit is 100 per request
+  const chunks = [];
+  for (let i = 0; i < pushTokens.length; i += 100) {
+    chunks.push(pushTokens.slice(i, i + 100));
+  }
+
+  let sentCount = 0;
+  for (const chunk of chunks) {
+    const messages = chunk.map(token => ({
+      to: token,
+      sound: 'default',
+      title,
+      body,
+      data,
+    }));
+
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(messages),
+    });
+
+    const result = await response.json();
+    if (result.data) {
+      sentCount += result.data.length;
+    }
+  }
+
+  return { success: true, sentCount };
+}
+

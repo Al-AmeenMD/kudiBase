@@ -112,7 +112,7 @@ export function PayLaterForm({
                     <TextInput
                         value={customerName}
                         onChangeText={onCustomerNameChange}
-                        placeholder="Amina Yusuf"
+                        placeholder="Ahmad Yusuf"
                         placeholderTextColor={theme.muted}
                         style={[
                             styles.textInput,

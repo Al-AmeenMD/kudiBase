@@ -1,3 +1,4 @@
+import * as Contacts from 'expo-contacts';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -11,7 +12,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as Contacts from 'expo-contacts';
 
 import {
   CartView,
@@ -29,7 +29,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getItems, getRecentCustomers, getSalesSummary, initDb, recordSale } from '@/lib/db';
+import { getItems, getRecentCustomers, getSalesSummary, initDb, recordSale, setAppSetting } from '@/lib/db';
+import { scheduleDebtReminder } from '@/lib/notifications';
 
 function getTodayRange() {
   const start = new Date();
@@ -214,7 +215,7 @@ export default function SalesScreen() {
       Alert.alert('Setup error', 'Unable to load sales summary.');
       console.error(error);
     });
-    loadRecentCustomers().catch(() => {});
+    loadRecentCustomers().catch(() => { });
   }, [loadItems, loadRecentCustomers, loadSummary]);
 
   useEffect(() => {
@@ -253,7 +254,7 @@ export default function SalesScreen() {
     if (!contactSearch.trim()) return;
     if (filteredContacts.length > 0) return;
     if (!contactsHasNext || contactsLoadingMore) return;
-    handleLoadMoreContacts().catch(() => {});
+    handleLoadMoreContacts().catch(() => { });
   }, [contactSearch, contactsHasNext, contactsLoadingMore, filteredContacts.length]);
 
   async function loadContactsPage(offset: number, limit: number = 200) {
@@ -331,7 +332,7 @@ export default function SalesScreen() {
         Alert.alert('Load error', 'Unable to refresh summary.');
         console.error(error);
       });
-      loadRecentCustomers().catch(() => {});
+      loadRecentCustomers().catch(() => { });
     }, [loadItems, loadRecentCustomers, loadSummary])
   );
 
@@ -473,6 +474,20 @@ export default function SalesScreen() {
       await loadSummary();
       Alert.alert('Sale saved', 'Inventory updated offline.');
       if (saved?.saleId) {
+        // Schedule a push notification for Pay Later sales with a due date
+        if (paymentMethod === 'Pay Later' && balance > 0) {
+          scheduleDebtReminder({
+            saleId: saved.saleId,
+            customerName: customerName || 'Customer',
+            amount: `₦${balance.toLocaleString()}`,
+            dueDate,
+          }).then((notifId) => {
+            if (notifId) {
+              // Store notification ID so we can cancel it when debt is paid
+              setAppSetting(`debt_notif_${saved.saleId}`, notifId).catch(() => {});
+            }
+          }).catch((err) => console.warn('Could not schedule debt reminder:', err));
+        }
         router.push({ pathname: '/receipt', params: { saleId: saved.saleId } });
       }
     } catch (error) {
@@ -579,7 +594,7 @@ export default function SalesScreen() {
                     <TextInput
                       value={customerName}
                       onChangeText={setCustomerName}
-                      placeholder="e.g. Amina Yusuf"
+                      placeholder="e.g. Ahmad Yusuf"
                       placeholderTextColor={theme.muted}
                       style={[
                         styles.textInput,

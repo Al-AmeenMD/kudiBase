@@ -9,8 +9,9 @@ import { useRouter, useSegments } from 'expo-router';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { refreshPlanTier } from '@/lib/subscription';
-import { configureNotifications } from '@/lib/notifications';
-import { getAppSetting, initDb } from '@/lib/db';
+import { configureNotifications, getPushToken } from '@/lib/notifications';
+import { getAppSetting, initDb, setAppSetting, upsertBusinessProfile } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -57,13 +58,85 @@ export default function RootLayout() {
     async function checkOnboarding() {
       await initDb();
       const completed = await getAppSetting('onboarding_complete');
-      if (completed !== 'true') {
-        router.replace('/onboarding');
+
+      if (completed === 'true') {
+        setCheckedOnboarding(true);
+        return;
       }
+
+      // Check if there's an existing Supabase session (returning user)
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const meta = session.user.user_metadata;
+          if (meta?.business_name) {
+            // Restore profile from Supabase metadata into local SQLite
+            await upsertBusinessProfile({
+              businessName: meta.business_name,
+              ownerName: meta.owner_name ?? '',
+              phone: meta.phone ?? '',
+              address: meta.address ?? '',
+              email: session.user.email ?? '',
+              bankName: meta.bank_name ?? '',
+              accountNumber: meta.account_number ?? '',
+            });
+            await setAppSetting('onboarding_complete', 'true');
+            setCheckedOnboarding(true);
+            return;
+          }
+        }
+      } catch {
+        // Session check failed, proceed to onboarding
+      }
+
+      router.replace('/onboarding');
       setCheckedOnboarding(true);
     }
     checkOnboarding().catch(() => {});
   }, [checkedOnboarding, error, loaded, router, segments]);
+
+  useEffect(() => {
+    console.log('------------------------------------');
+    console.log('DEBUG: RootLayout Mounted');
+    console.log('------------------------------------');
+
+    async function checkAndRegister() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('DEBUG: Current Session User:', session?.user?.email || 'None');
+        
+        if (session?.user) {
+          console.log('DEBUG: Fetching push token...');
+          const token = await getPushToken();
+          console.log('DEBUG: Push Token Result:', token);
+          
+          if (token) {
+            console.log('DEBUG: Saving to Supabase...');
+            const { error } = await supabase.from('push_tokens').upsert({
+              user_id: session.user.id,
+              token: token,
+            }, { onConflict: 'user_id,token' });
+            
+            if (error) console.error('DEBUG ERROR:', error.message);
+            else console.log('DEBUG: SUCCESS! Token registered.');
+          }
+        }
+      } catch (err) {
+        console.error('DEBUG CATCH ERROR:', err);
+      }
+    }
+
+    checkAndRegister();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('DEBUG: Auth Event:', event);
+      if (event === 'SIGNED_IN') {
+        checkAndRegister();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [checkedOnboarding]);
 
   if (!loaded && !error) {
     return null;

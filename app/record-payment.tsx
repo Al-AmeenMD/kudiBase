@@ -16,7 +16,8 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCurrency } from '@/hooks/use-currency';
-import { getSaleById, initDb, recordPayment } from '@/lib/db';
+import { getAppSetting, getSaleById, initDb, recordPayment } from '@/lib/db';
+import { cancelDebtReminder } from '@/lib/notifications';
 
 type PaymentMethod = 'Cash' | 'Transfer' | 'POS';
 
@@ -97,6 +98,19 @@ export default function RecordPaymentScreen() {
         method,
         note: note.trim() || undefined,
       });
+
+      // If this payment fully settles the debt, cancel the notification
+      if (value >= maxAmount) {
+        try {
+          const notifId = await getAppSetting(`debt_notif_${sale.id}`);
+          if (notifId) {
+            await cancelDebtReminder(notifId);
+          }
+        } catch {
+          // Best-effort cancellation
+        }
+      }
+
       router.back();
     } catch (error) {
       Alert.alert('Save failed', 'Unable to record payment.');

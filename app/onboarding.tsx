@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -10,12 +10,16 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getBusinessProfile, initDb, setAppSetting, upsertBusinessProfile } from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 
+type Mode = 'register' | 'login';
+
 function OnboardingScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const router = useRouter();
   const { source } = useLocalSearchParams<{ source?: string }>();
   const insets = useSafeAreaInsets();
+
+  const [mode, setMode] = useState<Mode>('register');
   const [businessName, setBusinessName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [phone, setPhone] = useState('');
@@ -47,7 +51,76 @@ function OnboardingScreen() {
     });
   }, []);
 
-  async function handleComplete(skipProfile: boolean) {
+  async function handleLogin() {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Missing fields', 'Please enter your email and password.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
+
+      if (signInError) {
+        Alert.alert('Login failed', signInError.message || 'Invalid email or password.');
+        return;
+      }
+
+      if (data.user) {
+        const meta = data.user.user_metadata;
+        // Restore the user's profile from Supabase metadata
+        await initDb();
+        await upsertBusinessProfile({
+          businessName: meta?.business_name ?? 'My Business',
+          ownerName: meta?.owner_name ?? '',
+          phone: meta?.phone ?? '',
+          address: meta?.address ?? '',
+          email: data.user.email ?? email.trim(),
+          bankName: meta?.bank_name ?? '',
+          accountNumber: meta?.account_number ?? '',
+        });
+        await setAppSetting('onboarding_complete', 'true');
+
+        Alert.alert('Welcome back!', `Logged in as ${data.user.email}`);
+        router.replace('/');
+      }
+    } catch (error) {
+      Alert.alert('Login failed', 'Something went wrong. Please try again.');
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      Alert.alert('Enter your email', 'Please type your email address first, then tap "Forgot password?" again.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+      if (error) {
+        Alert.alert('Reset failed', error.message || 'Unable to send reset email.');
+        return;
+      }
+      Alert.alert(
+        'Check your email',
+        `We sent a password reset link to ${email.trim()}. Follow the link to reset your password, then come back and log in.`
+      );
+    } catch {
+      Alert.alert('Error', 'Something went wrong. Please try again later.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRegister(skipProfile: boolean) {
     try {
       setSaving(true);
       await initDb();
@@ -66,7 +139,7 @@ function OnboardingScreen() {
             Alert.alert('Password required', 'Please enter a secure password (at least 6 characters).');
             return;
           }
-          
+
           const { error: signUpError } = await supabase.auth.signUp({
             email: email.trim(),
             password: password.trim(),
@@ -74,6 +147,10 @@ function OnboardingScreen() {
               data: {
                 business_name: businessName.trim(),
                 owner_name: ownerName.trim(),
+                phone: phone.trim(),
+                address: address.trim(),
+                bank_name: bankName.trim(),
+                account_number: accountNumber.trim(),
               }
             }
           });
@@ -107,6 +184,8 @@ function OnboardingScreen() {
     }
   }
 
+  const isSettingsMode = source === 'settings';
+
   return (
     <ThemedView style={styles.container}>
       <KeyboardAvoidingView
@@ -116,9 +195,19 @@ function OnboardingScreen() {
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.headerRow}>
             <View>
-              <ThemedText type="subtitle">Welcome to KudiBase</ThemedText>
+              <ThemedText type="subtitle">
+                {isSettingsMode
+                  ? 'Edit Profile'
+                  : mode === 'register'
+                    ? 'Welcome to KudiBase'
+                    : 'Welcome back'}
+              </ThemedText>
               <ThemedText style={[styles.subtitle, { color: theme.muted }]}>
-                Set up your business once for receipts, reminders, and reports.
+                {isSettingsMode
+                  ? 'Update your business details.'
+                  : mode === 'register'
+                    ? 'Set up your business to get started.'
+                    : 'Log in to restore your account.'}
               </ThemedText>
             </View>
           </View>
@@ -127,87 +216,146 @@ function OnboardingScreen() {
             contentContainerStyle={styles.form}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled">
-            <InputRow
-              label="Business name"
-              value={businessName}
-              onChangeText={setBusinessName}
-              placeholder="KudiBase Store"
-            />
-            <InputRow
-              label="Owner name"
-              value={ownerName}
-              onChangeText={setOwnerName}
-              placeholder="Amina Yusuf"
-            />
-            <InputRow
-              label="Phone (optional)"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              placeholder="08030000000"
-            />
-            <InputRow
-              label="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              placeholder="hello@yourshop.com"
-            />
-            {source !== 'settings' && (
-              <InputRow
-                label="Password"
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Secure password"
-                secureTextEntry={true}
-              />
-            )}
-            <InputRow
-              label="Address (optional)"
-              value={address}
-              onChangeText={setAddress}
-              placeholder="12 Palm Street, Lagos"
-            />
-            <InputRow
-              label="Bank name (optional)"
-              value={bankName}
-              onChangeText={setBankName}
-              placeholder="Access Bank"
-            />
-            <InputRow
-              label="Account number (optional)"
-              value={accountNumber}
-              onChangeText={setAccountNumber}
-              keyboardType="number-pad"
-              placeholder="0123456789"
-            />
 
-            <View style={styles.helperCard}>
-              <ThemedText style={[styles.helperTitle, { color: theme.text }]}>You can update anytime</ThemedText>
-              <ThemedText style={[styles.helperText, { color: theme.muted }]}>
-                Edit these details later in the Profile screen.
-              </ThemedText>
-            </View>
+            {/* Login mode: just email + password */}
+            {mode === 'login' && !isSettingsMode && (
+              <>
+                <InputRow
+                  label="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  placeholder="hello@yourshop.com"
+                />
+                <InputRow
+                  label="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Your password"
+                  secureTextEntry={true}
+                />
+                <Pressable onPress={handleForgotPassword} disabled={saving}>
+                  <ThemedText style={[styles.forgotText, { color: theme.primary }]}>
+                    Forgot password?
+                  </ThemedText>
+                </Pressable>
+              </>
+            )}
+
+            {/* Register mode: full form */}
+            {(mode === 'register' || isSettingsMode) && (
+              <>
+                <InputRow
+                  label="Business name"
+                  value={businessName}
+                  onChangeText={setBusinessName}
+                  placeholder="KudiBase Store"
+                />
+                <InputRow
+                  label="Owner name"
+                  value={ownerName}
+                  onChangeText={setOwnerName}
+                  placeholder="Ahmad Yusuf"
+                />
+                <InputRow
+                  label="Phone (optional)"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  placeholder="08030000000"
+                />
+                <InputRow
+                  label="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  placeholder="hello@yourshop.com"
+                />
+                {!isSettingsMode && (
+                  <InputRow
+                    label="Password"
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Secure password (min 6 chars)"
+                    secureTextEntry={true}
+                  />
+                )}
+                <InputRow
+                  label="Address (optional)"
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="12 Palm Street, Lagos"
+                />
+                <InputRow
+                  label="Bank name (optional)"
+                  value={bankName}
+                  onChangeText={setBankName}
+                  placeholder="Access Bank"
+                />
+                <InputRow
+                  label="Account number (optional)"
+                  value={accountNumber}
+                  onChangeText={setAccountNumber}
+                  keyboardType="number-pad"
+                  placeholder="0123456789"
+                />
+
+                <View style={styles.helperCard}>
+                  <ThemedText style={[styles.helperTitle, { color: theme.text }]}>You can update anytime</ThemedText>
+                  <ThemedText style={[styles.helperText, { color: theme.muted }]}>
+                    Edit these details later in the Profile screen.
+                  </ThemedText>
+                </View>
+              </>
+            )}
           </ScrollView>
 
           <View style={styles.actions}>
-            {source === 'settings' && (
+            {isSettingsMode && (
               <Pressable
-                onPress={() => handleComplete(true)}
+                onPress={() => handleRegister(true)}
                 disabled={saving}
                 style={[styles.secondaryButton, { borderColor: theme.border }]}>
                 <ThemedText style={[styles.secondaryText, { color: theme.text }]}>Skip for now</ThemedText>
               </Pressable>
             )}
             <Pressable
-              onPress={() => handleComplete(false)}
+              onPress={() => {
+                if (mode === 'login') {
+                  handleLogin();
+                } else {
+                  handleRegister(false);
+                }
+              }}
               disabled={saving}
               style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-              <ThemedText style={styles.primaryText}>
-                {saving ? 'Saving...' : 'Save & continue'}
-              </ThemedText>
+              {saving ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <ThemedText style={styles.primaryText}>
+                  {isSettingsMode
+                    ? 'Save & continue'
+                    : mode === 'register'
+                      ? 'Create account'
+                      : 'Log in'}
+                </ThemedText>
+              )}
             </Pressable>
           </View>
+
+          {/* Mode toggle — only show during initial onboarding */}
+          {!isSettingsMode && (
+            <Pressable onPress={() => setMode(mode === 'register' ? 'login' : 'register')} style={styles.toggleRow}>
+              <ThemedText style={[styles.toggleText, { color: theme.muted }]}>
+                {mode === 'register'
+                  ? 'Already have an account? '
+                  : 'New here? '}
+              </ThemedText>
+              <ThemedText style={[styles.toggleLink, { color: theme.primary }]}>
+                {mode === 'register' ? 'Log in' : 'Register'}
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
       </KeyboardAvoidingView>
     </ThemedView>
@@ -306,8 +454,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
   },
-  primaryText: { color: '#FFFFFF', fontSize: 14 },
+  primaryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   secondaryButton: {
     flex: 1,
     borderRadius: 12,
@@ -316,6 +466,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryText: { fontSize: 14 },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  toggleText: {
+    fontSize: 13,
+  },
+  forgotText: {
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'right',
+    marginTop: -4,
+  },
+  toggleLink: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });
 
 export default OnboardingScreen;

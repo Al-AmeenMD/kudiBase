@@ -18,6 +18,7 @@ import {
 } from '@/lib/db';
 import { subscribeDbEvents } from '@/lib/db/events';
 import { isPremium } from '@/lib/subscription';
+import { cancelDebtReminder } from '@/lib/notifications';
 
 import type { AutoReminderSettings, BusinessProfile, Debt, PaymentRecord } from '@/components/debts';
 import {
@@ -308,6 +309,16 @@ export default function DebtsScreen() {
     try {
       setMarkingPaidId(debtId);
       await markSalePaid(debtId, 'Cash');
+
+      // Cancel any scheduled push notification for this debt
+      try {
+        const notifId = await getAppSetting(`debt_notif_${debtId}`);
+        if (notifId) {
+          await cancelDebtReminder(notifId);
+        }
+      } catch {
+        // Notification cancellation is best-effort
+      }
       await loadDebts();
       const history = await getPaymentsBySale(debtId);
       setPaymentHistory((prev) => ({
