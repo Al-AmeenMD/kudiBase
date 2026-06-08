@@ -1,13 +1,9 @@
-import { makeRedirectUri } from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
-import Constants from 'expo-constants';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -15,23 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { exportData, getAppSetting, importData, initDb } from '@/lib/db';
-import {
-  clearDriveSession,
-  downloadDriveBackup,
-  getDriveClientIds,
-  getDriveScope,
-  getDriveSession,
-  isDailySyncEnabled,
-  isDriveEnabled,
-  saveDriveSession,
-  setDailySyncEnabled,
-  shouldRunDailySync,
-  uploadDriveBackup,
-} from '@/lib/google-drive';
-import { isPremium } from '@/lib/subscription';
-
-WebBrowser.maybeCompleteAuthSession();
+import { exportData, importData, initDb } from '@/lib/db';
 
 export default function BackupScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -40,96 +20,6 @@ export default function BackupScreen() {
   const insets = useSafeAreaInsets();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [premium, setPremium] = useState(false);
-  const [driveConnected, setDriveConnected] = useState(false);
-  const [driveSyncing, setDriveSyncing] = useState(false);
-  const [driveDaily, setDriveDaily] = useState(false);
-  const [driveLastSync, setDriveLastSync] = useState<string | null>(null);
-
-  const driveIds = getDriveClientIds();
-  const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
-
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    iosClientId: driveIds.iosClientId || undefined,
-    androidClientId: driveIds.androidClientId || undefined,
-    webClientId: driveIds.webClientId || undefined,
-    scopes: [getDriveScope()],
-  });
-
-  useEffect(() => {
-    isPremium()
-      .then(setPremium)
-      .catch(() => { });
-  }, []);
-
-  useEffect(() => {
-    async function handleAuthResponse() {
-      if (response?.type === 'success') {
-        const { authentication } = response;
-        if (authentication?.accessToken) {
-          try {
-            const accessToken = authentication.accessToken;
-            const expiresIn = authentication.expiresIn;
-            await saveDriveSession({ accessToken, expiresIn });
-            setDriveConnected(true);
-            setDriveDaily(true);
-            await setDailySyncEnabled(true);
-          } catch (error) {
-            console.error('Failed to save session:', error);
-            Alert.alert('Error', 'Failed to save login session.');
-          }
-        }
-      } else if (response?.type === 'error') {
-        Alert.alert('Sign-in failed', 'Google sign-in encountered an error.');
-        console.error('Google Auth Error:', response.error);
-      }
-    }
-    handleAuthResponse();
-  }, [response]);
-
-  useEffect(() => {
-    async function loadDriveState() {
-      const [enabled, daily, session, lastSync] = await Promise.all([
-        isDriveEnabled(),
-        isDailySyncEnabled(),
-        getDriveSession(),
-        getAppSetting('drive_last_sync'),
-      ]);
-      setDriveConnected(enabled && !!session?.token);
-      setDriveDaily(daily);
-      if (lastSync) {
-        const last = Number(lastSync);
-        setDriveLastSync(Number.isFinite(last) ? new Date(last).toLocaleDateString('en-NG') : null);
-      }
-    }
-    loadDriveState().catch(() => { });
-  }, []);
-
-  useEffect(() => {
-    async function runAutoSync() {
-      if (!premium || !driveConnected || !driveDaily) {
-        return;
-      }
-      const session = await getDriveSession();
-      if (!session || session.expiryMs <= Date.now()) {
-        return;
-      }
-      const shouldSync = await shouldRunDailySync();
-      if (!shouldSync) {
-        return;
-      }
-      try {
-        setDriveSyncing(true);
-        await uploadDriveBackup(session.token);
-        setDriveLastSync(new Date().toLocaleDateString('en-NG'));
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setDriveSyncing(false);
-      }
-    }
-    runAutoSync().catch(() => { });
-  }, [driveConnected, driveDaily, premium]);
 
   async function handleExport() {
     try {
@@ -187,66 +77,6 @@ export default function BackupScreen() {
     }
   }
 
-  function handleConnectDrive() {
-    if (!driveIds.webClientId && !driveIds.iosClientId && !driveIds.androidClientId) {
-      Alert.alert('Missing config', 'Please configure Google Drive Client IDs in app.json');
-      return;
-    }
-    if (isExpoGo) {
-      Alert.alert(
-        'Not available in Expo Go',
-        'Google Drive sync requires a production or development build. It will work after deployment.'
-      );
-      return;
-    }
-    promptAsync();
-  }
-
-  async function handleSyncNow() {
-    try {
-      setDriveSyncing(true);
-      const session = await getDriveSession();
-      if (!session || session.expiryMs <= Date.now()) {
-        Alert.alert('Reconnect required', 'Please reconnect Google Drive.');
-        return;
-      }
-      await uploadDriveBackup(session.token);
-      setDriveLastSync(new Date().toLocaleDateString('en-NG'));
-      Alert.alert('Synced', 'Drive backup updated.');
-    } catch (error) {
-      Alert.alert('Sync failed', 'Unable to sync to Drive.');
-      console.error(error);
-    } finally {
-      setDriveSyncing(false);
-    }
-  }
-
-  async function handleRestoreFromDrive() {
-    try {
-      setDriveSyncing(true);
-      const session = await getDriveSession();
-      if (!session || session.expiryMs <= Date.now()) {
-        Alert.alert('Reconnect required', 'Please reconnect Google Drive.');
-        return;
-      }
-      await downloadDriveBackup(session.token);
-      setDriveLastSync(new Date().toLocaleDateString('en-NG'));
-      Alert.alert('Restored', 'Drive backup restored.');
-    } catch (error) {
-      Alert.alert('Restore failed', 'Unable to restore from Drive.');
-      console.error(error);
-    } finally {
-      setDriveSyncing(false);
-    }
-  }
-
-  async function handleDisconnectDrive() {
-    await clearDriveSession();
-    setDriveConnected(false);
-    setDriveDaily(false);
-    setDriveLastSync(null);
-  }
-
   return (
     <ThemedView style={styles.container}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top - 8, 0) }]}>
@@ -290,81 +120,6 @@ export default function BackupScreen() {
             </ThemedText>
           </Pressable>
         </View>
-
-        <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-          <View style={styles.cardHeader}>
-            <ThemedText style={styles.cardTitle}>Google Drive sync</ThemedText>
-            {!premium ? (
-              <IconSymbol name="crown.fill" size={18} color={theme.primaryDeep} />
-            ) : null}
-          </View>
-          <ThemedText style={styles.cardMeta}>
-            {premium
-              ? driveConnected
-                ? 'Connected to Google Drive (App Data).'
-                : 'Connect Google Drive to sync automatically.'
-              : 'Premium feature'}
-          </ThemedText>
-          {premium ? (
-            <>
-              {!driveConnected ? (
-                <Pressable
-                  onPress={handleConnectDrive}
-                  disabled={!request && !isExpoGo}
-                  style={[styles.secondaryButton, { borderColor: theme.border, opacity: (!request && !isExpoGo) ? 0.5 : 1 }]}>
-                  <ThemedText style={styles.secondaryButtonText}>Connect Google Drive</ThemedText>
-                </Pressable>
-              ) : (
-                <>
-                  <View style={styles.toggleRow}>
-                    <View>
-                      <ThemedText style={styles.cardTitle}>Auto sync daily</ThemedText>
-                      <ThemedText style={styles.cardMeta}>
-                        {driveLastSync ? `Last synced: ${driveLastSync}` : 'No sync yet'}
-                      </ThemedText>
-                    </View>
-                    <Switch
-                      value={driveDaily}
-                      onValueChange={(value) => {
-                        setDriveDaily(value);
-                        setDailySyncEnabled(value).catch(() => { });
-                      }}
-                      trackColor={{ true: theme.primary, false: theme.border }}
-                      thumbColor="#FFFFFF"
-                    />
-                  </View>
-                  <View style={styles.driveActions}>
-                    <Pressable
-                      onPress={handleSyncNow}
-                      disabled={driveSyncing}
-                      style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-                      <ThemedText style={styles.primaryButtonText}>
-                        {driveSyncing ? 'Syncing...' : 'Sync now'}
-                      </ThemedText>
-                    </Pressable>
-                    <Pressable
-                      onPress={handleRestoreFromDrive}
-                      disabled={driveSyncing}
-                      style={[styles.secondaryButton, { borderColor: theme.border }]}>
-                      <ThemedText style={styles.secondaryButtonText}>Restore from Drive</ThemedText>
-                    </Pressable>
-                    <Pressable
-                      onPress={handleDisconnectDrive}
-                      style={[styles.tertiaryButton, { borderColor: theme.border }]}>
-                      <ThemedText style={styles.secondaryButtonText}>Disconnect</ThemedText>
-                    </Pressable>
-                  </View>
-                </>
-              )}
-            </>
-          ) : (
-            <Pressable
-              onPress={() => router.push('/premium')}
-              style={[styles.secondaryButton, { borderColor: theme.border }]}>
-              <ThemedText style={styles.secondaryButtonText}>Upgrade to Premium</ThemedText>
-            </Pressable>
-          )}
-        </View>
       </ScrollView>
     </ThemedView>
   );
@@ -398,12 +153,6 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
   cardTitle: { fontSize: 14 },
   cardMeta: { fontSize: 12, opacity: 0.7 },
   primaryButton: {
@@ -419,19 +168,4 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   secondaryButtonText: { fontSize: 14 },
-  tertiaryButton: {
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  driveActions: {
-    gap: 10,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
 });

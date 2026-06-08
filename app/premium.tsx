@@ -19,24 +19,24 @@ import { getPlanTier, refreshPlanTier } from '@/lib/subscription';
 
 const FEATURES = [
   {
-    title: 'Cloud Backup & Sync',
-    description: 'Keep your data safe with automated Google Drive sync across devices.',
-    icon: 'cloud.fill',
-  },
-  {
     title: 'Professional Exports',
     description: 'Generate high-quality PDF and CSV reports for your accounting.',
-    icon: 'doc.text.fill',
+    icon: 'arrow.up.circle.fill',
   },
   {
     title: 'Smart Reminders',
     description: 'Auto-send payment reminders to customers via WhatsApp.',
-    icon: 'bell.badge.fill',
+    icon: 'bell.fill',
   },
   {
     title: 'Advanced Analytics',
     description: 'Unlock deep insights into your sales trends and profit margins.',
-    icon: 'chart.bar.xaxis',
+    icon: 'chart.bar.fill',
+  },
+  {
+    title: 'Inventory Insights',
+    description: 'Spot dead stock and products that need attention.',
+    icon: 'archivebox.fill',
   },
 ];
 

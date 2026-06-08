@@ -8,9 +8,9 @@ A modern POS (Point of Sale) app for Nigerian small business merchants. Built wi
 - **📦 Inventory Management** - Track stock levels with low stock alerts
 - **💳 Debt Management** - Track outstanding payments and send WhatsApp reminders
 - **📈 Reports & Analytics** - Sales summaries, profit tracking, top products
-- **☁️ Google Drive Backup** - Secure cloud backup and restore
+- **Backup & Restore** - Export and import local backup files
 - **🌙 Dark Mode** - Full dark/light theme support
-- **💎 Premium Features** - Auto-reminders, PDF receipts, and more
+- **💎 Premium Features** - Auto-reminders, advanced reports, exports, and inventory insights
 
 ## Tech Stack
 

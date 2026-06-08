@@ -1,7 +1,10 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 
+import { EmptyState } from '@/components/empty-state';
+import { ListSkeleton } from '@/components/loading-skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
@@ -43,6 +46,8 @@ export default function DebtsScreen() {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<Record<string, PaymentRecord[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // UI state
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
@@ -61,11 +66,6 @@ export default function DebtsScreen() {
   });
   const [autoPromptVisible, setAutoPromptVisible] = useState(false);
   const [autoTargets, setAutoTargets] = useState<Debt[]>([]);
-  const loadDebtsRef = useRef(loadDebts);
-
-  useEffect(() => {
-    loadDebtsRef.current = loadDebts;
-  }, [loadDebts]);
 
   const loadDebts = useCallback(async () => {
     await initDb();
@@ -105,6 +105,12 @@ export default function DebtsScreen() {
     );
   }, []);
 
+  const loadDebtsRef = useRef(loadDebts);
+
+  useEffect(() => {
+    loadDebtsRef.current = loadDebts;
+  }, [loadDebts]);
+
   useEffect(() => {
     isPremium()
       .then(setPremium)
@@ -131,10 +137,12 @@ export default function DebtsScreen() {
   }, []);
 
   useEffect(() => {
-    loadDebts().catch((error) => {
-      Alert.alert('Load error', 'Unable to load debts.');
-      console.error(error);
-    });
+    loadDebts()
+      .catch((error) => {
+        Alert.alert('Load error', 'Unable to load debts.');
+        console.error(error);
+      })
+      .finally(() => setLoading(false));
   }, [loadDebts]);
 
   useFocusEffect(
@@ -309,6 +317,7 @@ export default function DebtsScreen() {
     try {
       setMarkingPaidId(debtId);
       await markSalePaid(debtId, 'Cash');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       // Cancel any scheduled push notification for this debt
       try {
@@ -342,7 +351,20 @@ export default function DebtsScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              try { await loadDebts(); } catch {} finally { setRefreshing(false); }
+            }}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
+          />
+        }>
         <View style={styles.header}>
           <ThemedText type="title">Debts</ThemedText>
           <ThemedText style={styles.caption}>Track who owes you and send gentle reminders.</ThemedText>
@@ -362,12 +384,14 @@ export default function DebtsScreen() {
         <View style={styles.section}>
           <ThemedText type="subtitle">Debtor list</ThemedText>
           <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            {debts.length === 0 ? (
-              <View style={styles.emptyState}>
-                <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
-                  No outstanding debts.
-                </ThemedText>
-              </View>
+            {loading ? (
+              <ListSkeleton rows={3} />
+            ) : debts.length === 0 ? (
+              <EmptyState
+                icon="person.2.fill"
+                title="No outstanding debts"
+                subtitle="All your customers are paid up. Great job!"
+              />
             ) : (
               debts.map((debt, index) => (
                 <DebtorCard

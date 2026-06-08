@@ -1,15 +1,17 @@
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View, Pressable, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 
+import { EmptyState } from '@/components/empty-state';
+import { HomeSkeleton } from '@/components/loading-skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCurrency } from '@/hooks/use-currency';
 import { getBusinessProfile, getDeadStockItems, getItems, getOutstandingSales, getSalesSummary, initDb } from '@/lib/db';
+import { getTodayRange, getWeekRange } from '@/lib/date-utils';
 import { subscribeDbEvents } from '@/lib/db/events';
 import { subscribeSettings } from '@/lib/settings-events';
 import { isPremium } from '@/lib/subscription';
@@ -21,26 +23,6 @@ const quickActions = [
   { title: 'Debtors', subtitle: 'Collect unpaid balances', tone: 'danger', route: '/debts' },
 ];
 
-function getTodayRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { startMs: start.getTime(), endMs: end.getTime() };
-}
-
-function getWeekRange() {
-  const start = new Date();
-  const day = start.getDay();
-  const diff = (day + 6) % 7;
-  start.setDate(start.getDate() - diff);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-  return { startMs: start.getTime(), endMs: end.getTime() };
-}
-
 const lowStockThreshold = 5;
 
 export default function HomeScreen() {
@@ -49,6 +31,8 @@ export default function HomeScreen() {
   const { format } = useCurrency();
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
     totalSales: 0,
     totalPaid: 0,
@@ -136,6 +120,7 @@ export default function HomeScreen() {
       totalDue: weekSummary.totals.total_due ?? 0,
       saleCount: weekSummary.totals.sale_count ?? 0,
     });
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -157,22 +142,22 @@ export default function HomeScreen() {
     return unsubscribe;
   }, [loadSummary]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (cancelled) return;
-      await loadSummary();
-    })().catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [loadSummary]);
-
   useFocusEffect(
     useCallback(() => {
-      loadSummary().catch((error) => console.error(error));
+      loadSummary().catch(() => {});
     }, [loadSummary])
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadSummary();
+    } catch {
+      // silently ignore
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadSummary]);
 
   const todayStats = [
     { label: 'Sales', value: format(stats.totalSales), note: `${stats.saleCount} transactions` },
@@ -196,204 +181,238 @@ export default function HomeScreen() {
   return (
     <ThemedView style={styles.container}>
       <View style={[styles.heroGlow, { backgroundColor: theme.secondary }]} />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
+          />
+        }>
         <View style={styles.header}>
           <View style={styles.brandRow}>
             <Image source={require('@/assets/images/kudibase_logo.png')} style={styles.logo} />
             <View>
-              <ThemedText type="subtitle" style={{ color: Colors.light.text }}>
+              <ThemedText type="subtitle">
                 KudiBase
               </ThemedText>
-              <ThemedText style={[styles.brandCaption, { color: Colors.light.text }]}>
+              <ThemedText style={[styles.brandCaption, { color: theme.muted }]}>
                 Your offline shop assistant
               </ThemedText>
             </View>
           </View>
           <Pressable
             onPress={() => router.push('/profile')}
-            style={[styles.pill, { backgroundColor: theme.surface }]}>
+            android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
+            style={({ pressed }) => [styles.pill, { backgroundColor: theme.surface }, pressed && styles.pressed]}>
             <ThemedText style={styles.pillText}>{businessName}</ThemedText>
           </Pressable>
         </View>
 
-        <View style={styles.section}>
-          <ThemedText type="subtitle">Quick actions</ThemedText>
-          <View style={styles.quickGrid}>
-            {quickActions.map((action) => {
-              const isSecondary = action.tone === 'secondary';
-              const titleColor = isSecondary ? theme.onSecondary : '#FFFFFF';
-              const subtitleColor = isSecondary ? theme.onSecondary : '#FFFFFF';
-              const cardColor =
-                action.tone === 'primary'
-                  ? theme.primary
-                  : action.tone === 'secondary'
-                    ? theme.secondary
-                    : action.tone === 'danger'
-                      ? '#D64545'
-                      : theme.accent;
+        {loading ? (
+          <HomeSkeleton />
+        ) : (
+          <>
+            <View style={styles.section}>
+              <ThemedText type="subtitle">Quick actions</ThemedText>
+              <View style={styles.quickGrid}>
+                {quickActions.map((action) => {
+                  const isSecondary = action.tone === 'secondary';
+                  const titleColor = isSecondary ? theme.onSecondary : '#FFFFFF';
+                  const subtitleColor = isSecondary ? theme.onSecondary : '#FFFFFF';
+                  const cardColor =
+                    action.tone === 'primary'
+                      ? theme.primary
+                      : action.tone === 'secondary'
+                        ? theme.secondary
+                        : action.tone === 'danger'
+                          ? '#D64545'
+                          : theme.accent;
 
-              return (
-              <Pressable
-                key={action.title}
-                onPress={() => router.push(action.route)}
-                style={[
-                  styles.actionCard,
-                  {
-                    flexBasis: quickActionBasis,
-                    maxWidth: quickActionBasis,
-                    flexGrow: 0,
-                    backgroundColor: cardColor,
-                  },
-                ]}>
-                <ThemedText style={[styles.actionTitle, { color: titleColor }]}>
-                  {action.title}
-                </ThemedText>
-                <ThemedText style={[styles.actionSubtitle, { color: subtitleColor }]}>
-                  {action.subtitle}
-                </ThemedText>
-              </Pressable>
-            );})}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <ThemedText type="subtitle">Today at a glance</ThemedText>
-          <View style={styles.statsRow}>
-            {todayStats.map((stat, index) => (
-              <View
-                key={stat.label}
-                style={[
-                  styles.statCard,
-                  { borderColor: theme.border, backgroundColor: theme.surface },
-                  statColumns === 2 && index === todayStats.length - 1
-                    ? styles.statCardFull
-                    : { flexBasis: statCardBasis },
-                ]}>
-                <ThemedText style={styles.statLabel}>{stat.label}</ThemedText>
-                <ThemedText
-                  style={styles.statValue}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}>
-                  {stat.value}
-                </ThemedText>
-                <ThemedText style={styles.statNote}>{stat.note}</ThemedText>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <ThemedText type="subtitle">This week</ThemedText>
-          <View style={styles.statsRow}>
-            {weeklyStats.map((stat, index) => (
-              <View
-                key={stat.label}
-                style={[
-                  styles.statCard,
-                  { borderColor: theme.border, backgroundColor: theme.surface },
-                  statColumns === 2 && index === weeklyStats.length - 1
-                    ? styles.statCardFull
-                    : { flexBasis: statCardBasis },
-                ]}>
-                <ThemedText style={styles.statLabel}>{stat.label}</ThemedText>
-                <ThemedText
-                  style={styles.statValue}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}>
-                  {stat.value}
-                </ThemedText>
-                <ThemedText style={styles.statNote}>{stat.note}</ThemedText>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <ThemedText type="subtitle">Low stock items</ThemedText>
-          <View
-            style={[
-              styles.listCard,
-              { borderColor: theme.border, backgroundColor: theme.surface },
-            ]}>
-            {lowStockItems.length === 0 ? (
-              <View style={styles.emptyRow}>
-                <ThemedText style={[styles.listMeta, { color: theme.muted }]}>
-                  No low stock items.
-                </ThemedText>
-              </View>
-            ) : (
-              lowStockItems.map((item, index) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
-                  style={[styles.listRow, index > 0 && [styles.rowDivider, { borderTopColor: theme.border }]]}>
-                  <ThemedText style={styles.listTitle}>{item.name}</ThemedText>
-                  <ThemedText style={styles.listMeta}>Low stock • {item.stock} left</ThemedText>
-                </Pressable>
-              ))
-            )}
-          </View>
-        </View>
-
-        {premium ? (
-          <View style={styles.section}>
-            <ThemedText type="subtitle">Dead stock alerts</ThemedText>
-            <View
-              style={[
-                styles.listCard,
-                { borderColor: theme.border, backgroundColor: theme.surface },
-              ]}>
-              {deadStock.length === 0 ? (
-                <View style={styles.emptyRow}>
-                  <ThemedText style={[styles.listMeta, { color: theme.muted }]}>
-                    No stale inventory detected.
-                  </ThemedText>
-                </View>
-              ) : (
-                deadStock.map((item, index) => (
+                  return (
                   <Pressable
-                    key={item.id}
-                    onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
-                    style={[styles.listRow, index > 0 && [styles.rowDivider, { borderTopColor: theme.border }]]}>
-                    <ThemedText style={styles.listTitle}>{item.name}</ThemedText>
-                    <ThemedText style={styles.listMeta}>
-                      {item.stock} left • {item.days >= 999 ? 'Never sold' : `${item.days} days`}
+                    key={action.title}
+                    onPress={() => router.push(action.route as any)}
+                    android_ripple={{ color: 'rgba(255,255,255,0.15)' }}
+                    style={({ pressed }) => [
+                      styles.actionCard,
+                      {
+                        flexBasis: quickActionBasis,
+                        maxWidth: quickActionBasis,
+                        flexGrow: 0,
+                        backgroundColor: cardColor,
+                      },
+                      pressed && styles.pressed,
+                    ]}>
+                    <ThemedText style={[styles.actionTitle, { color: titleColor }]}>
+                      {action.title}
+                    </ThemedText>
+                    <ThemedText style={[styles.actionSubtitle, { color: subtitleColor }]}>
+                      {action.subtitle}
                     </ThemedText>
                   </Pressable>
-                ))
-              )}
-            </View>
-          </View>
-        ) : null}
-
-        <View style={styles.section}>
-          <ThemedText type="subtitle">Top debtors</ThemedText>
-          <View
-            style={[
-              styles.listCard,
-              { borderColor: theme.border, backgroundColor: theme.surface },
-            ]}>
-            {topDebtors.length === 0 ? (
-              <View style={styles.emptyRow}>
-                <ThemedText style={[styles.listMeta, { color: theme.muted }]}>
-                  No outstanding debts.
-                </ThemedText>
+                );})}
               </View>
-            ) : (
-              topDebtors.map((debtor, index) => (
-                <Pressable
-                  key={debtor.id}
-                  onPress={() => router.push('/debts')}
-                  style={[styles.listRow, index > 0 && [styles.rowDivider, { borderTopColor: theme.border }]]}>
-                  <ThemedText style={styles.listTitle}>{debtor.name}</ThemedText>
-                  <ThemedText style={styles.listMeta}>{format(debtor.amount)}</ThemedText>
-                </Pressable>
-              ))
-            )}
-          </View>
-        </View>
+            </View>
+
+            <View style={styles.section}>
+              <ThemedText type="subtitle">Today at a glance</ThemedText>
+              <View style={styles.statsRow}>
+                {todayStats.map((stat, index) => (
+                  <View
+                    key={stat.label}
+                    style={[
+                      styles.statCard,
+                      { borderColor: theme.border, backgroundColor: theme.surface },
+                      statColumns === 2 && index === todayStats.length - 1
+                        ? styles.statCardFull
+                        : { flexBasis: statCardBasis },
+                    ]}>
+                    <ThemedText style={styles.statLabel}>{stat.label}</ThemedText>
+                    <ThemedText
+                      style={styles.statValue}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}>
+                      {stat.value}
+                    </ThemedText>
+                    <ThemedText style={styles.statNote}>{stat.note}</ThemedText>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <ThemedText type="subtitle">This week</ThemedText>
+              <View style={styles.statsRow}>
+                {weeklyStats.map((stat, index) => (
+                  <View
+                    key={stat.label}
+                    style={[
+                      styles.statCard,
+                      { borderColor: theme.border, backgroundColor: theme.surface },
+                      statColumns === 2 && index === weeklyStats.length - 1
+                        ? styles.statCardFull
+                        : { flexBasis: statCardBasis },
+                    ]}>
+                    <ThemedText style={styles.statLabel}>{stat.label}</ThemedText>
+                    <ThemedText
+                      style={styles.statValue}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.7}>
+                      {stat.value}
+                    </ThemedText>
+                    <ThemedText style={styles.statNote}>{stat.note}</ThemedText>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <ThemedText type="subtitle">Low stock items</ThemedText>
+              <View
+                style={[
+                  styles.listCard,
+                  { borderColor: theme.border, backgroundColor: theme.surface },
+                ]}>
+                {lowStockItems.length === 0 ? (
+                  <EmptyState
+                    icon="archivebox.fill"
+                    title="No low stock items"
+                    subtitle="All your items are well stocked."
+                  />
+                ) : (
+                  lowStockItems.map((item, index) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
+                      android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
+                      style={({ pressed }) => [
+                        styles.listRow,
+                        index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
+                        pressed && styles.pressed,
+                      ]}>
+                      <ThemedText style={styles.listTitle}>{item.name}</ThemedText>
+                      <ThemedText style={styles.listMeta}>Low stock • {item.stock} left</ThemedText>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            </View>
+
+            {premium ? (
+              <View style={styles.section}>
+                <ThemedText type="subtitle">Dead stock alerts</ThemedText>
+                <View
+                  style={[
+                    styles.listCard,
+                    { borderColor: theme.border, backgroundColor: theme.surface },
+                  ]}>
+                  {deadStock.length === 0 ? (
+                    <EmptyState
+                      icon="cube.fill"
+                      title="No stale inventory"
+                      subtitle="All items are selling regularly."
+                    />
+                  ) : (
+                    deadStock.map((item, index) => (
+                      <Pressable
+                        key={item.id}
+                        onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
+                        android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
+                        style={({ pressed }) => [
+                          styles.listRow,
+                          index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
+                          pressed && styles.pressed,
+                        ]}>
+                        <ThemedText style={styles.listTitle}>{item.name}</ThemedText>
+                        <ThemedText style={styles.listMeta}>
+                          {item.stock} left • {item.days >= 999 ? 'Never sold' : `${item.days} days`}
+                        </ThemedText>
+                      </Pressable>
+                    ))
+                  )}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.section}>
+              <ThemedText type="subtitle">Top debtors</ThemedText>
+              <View
+                style={[
+                  styles.listCard,
+                  { borderColor: theme.border, backgroundColor: theme.surface },
+                ]}>
+                {topDebtors.length === 0 ? (
+                  <EmptyState
+                    icon="person.2.fill"
+                    title="No outstanding debts"
+                    subtitle="All your customers are paid up."
+                  />
+                ) : (
+                  topDebtors.map((debtor, index) => (
+                    <Pressable
+                      key={debtor.id}
+                      onPress={() => router.push('/debts')}
+                      android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
+                      style={({ pressed }) => [
+                        styles.listRow,
+                        index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
+                        pressed && styles.pressed,
+                      ]}>
+                      <ThemedText style={styles.listTitle}>{debtor.name}</ThemedText>
+                      <ThemedText style={styles.listMeta}>{format(debtor.amount)}</ThemedText>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            </View>
+          </>
+        )}
       </ScrollView>
     </ThemedView>
   );
@@ -444,6 +463,9 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: 13,
     opacity: 0.75,
+  },
+  pressed: {
+    opacity: 0.85,
   },
   section: {
     gap: 12,
@@ -502,11 +524,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 4,
-  },
-  emptyRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
   },
   rowDivider: {
     borderTopWidth: 1,

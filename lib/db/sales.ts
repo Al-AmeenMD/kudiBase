@@ -35,15 +35,17 @@ export async function recordSale(params: {
     customerPhone?: string;
     dueDate?: string;
 }): Promise<{ saleId: string; saleNumber: number }> {
-    const next = await query<{ next: number }>(
-        'SELECT COALESCE(MAX(sale_number), 0) + 1 as next FROM sales'
-    );
-    const saleNumber = next[0]?.next ?? 1;
     const saleId = makeId('sale');
     const createdAt = Date.now();
+    let saleNumber = 1;
 
     await withDb(async (db) => {
         await db.withTransactionAsync(async () => {
+            const next = await db.getAllAsync<{ next: number }>(
+                'SELECT COALESCE(MAX(sale_number), 0) + 1 as next FROM sales'
+            );
+            saleNumber = next[0]?.next ?? 1;
+
             await db.runAsync(
                 `INSERT INTO sales (
           id, sale_number, payment_method, subtotal, amount_paid, balance_due,
@@ -64,6 +66,10 @@ export async function recordSale(params: {
             );
 
             for (const item of params.items) {
+                if (!Number.isFinite(item.qty) || item.qty <= 0) {
+                    throw new Error(`Invalid quantity for ${item.name}`);
+                }
+
                 const lineTotal = item.price * item.qty;
                 const costSnapshot = item.cost ?? 0;
                 await db.runAsync(
@@ -72,15 +78,22 @@ export async function recordSale(params: {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                     [makeId('sale_item'), saleId, item.id, item.name, item.price, costSnapshot, item.qty, lineTotal]
                 );
-                await db.runAsync('UPDATE items SET stock_qty = stock_qty - ? WHERE id = ?', [
-                    item.qty,
-                    item.id,
-                ]);
+                const stockUpdate = await db.runAsync(
+                    'UPDATE items SET stock_qty = stock_qty - ? WHERE id = ? AND stock_qty >= ?',
+                    [
+                        item.qty,
+                        item.id,
+                        item.qty,
+                    ]
+                );
+                if (stockUpdate.changes === 0) {
+                    throw new Error(`Insufficient stock for ${item.name}`);
+                }
                 await db.runAsync(
                     `INSERT INTO stock_movements (
             id, item_id, type, quantity, reason, ref_id, created_at, note
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [makeId('stock'), item.id, 'out', item.qty, 'sale', saleId, createdAt, null]
+                    [makeId('stock'), item.id, 'OUT', item.qty, 'sale', saleId, createdAt, null]
                 );
             }
         });

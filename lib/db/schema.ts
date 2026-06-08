@@ -1,6 +1,18 @@
 import { execute, makeId, query, withDb } from './connection';
 
+let initPromise: Promise<void> | null = null;
+
 export async function initDb(): Promise<void> {
+    if (initPromise) return initPromise;
+    initPromise = doInitDb().catch((error) => {
+        // Reset so a retry is possible after a failure
+        initPromise = null;
+        throw error;
+    });
+    return initPromise;
+}
+
+async function doInitDb(): Promise<void> {
     await execute('PRAGMA foreign_keys = ON;');
 
     // Create tables

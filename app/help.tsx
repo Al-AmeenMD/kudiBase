@@ -66,7 +66,7 @@ export default function HelpScreen() {
           <View style={[styles.faqItem, styles.faqDivider, { borderBottomColor: theme.border }]}>
             <ThemedText style={styles.faqQuestion}>How do I back up my data?</ThemedText>
             <ThemedText style={[styles.faqAnswer, { color: theme.text }]}>
-              Use Settings → Backup & sync to export your data file. Keep it in a safe location.
+              Use Settings → Backup & data to export your data file. Keep it in a safe location.
             </ThemedText>
           </View>
           <View style={[styles.faqItem, styles.faqDivider, { borderBottomColor: theme.border }]}>

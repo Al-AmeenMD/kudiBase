@@ -43,7 +43,7 @@ export default function ReceiptsScreen() {
       subtotal: number;
       amount_paid: number;
       balance_due: number;
-      customer_name: string | null;
+      customer_name?: string | null;
       created_at: number;
     }>
   >([]);

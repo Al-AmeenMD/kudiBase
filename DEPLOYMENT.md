@@ -53,4 +53,4 @@ The dashboard is a Next.js app. **Vercel** is the recommended deployment platfor
 
 ## 🛠️ Maintenance
 - **Database**: Monitor your Supabase project for storage and API limits.
-- **Backups**: Ensure users are aware of the Google Drive backup feature in the mobile app.
+- **Backups**: Ensure users are aware of the local export/import backup flow in the mobile app.

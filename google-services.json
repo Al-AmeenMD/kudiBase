@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1041822454667",
+    "project_id": "kudibase-b09ed",
+    "storage_bucket": "kudibase-b09ed.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1041822454667:android:4bb1fc7d2f2a44cfb0158e",
+        "android_client_info": {
+          "package_name": "com.kudibase.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDXaFAV5RJvGgbxbe42gu5wr8mXNb5KyBE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

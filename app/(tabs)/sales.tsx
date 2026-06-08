@@ -1,4 +1,5 @@
 import * as Contacts from 'expo-contacts';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -27,30 +28,12 @@ import {
 } from '@/components/sales';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { SuccessToast } from '@/components/success-toast';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getItems, getRecentCustomers, getSalesSummary, initDb, recordSale, setAppSetting } from '@/lib/db';
+import { getTodayRange, getWeekRange } from '@/lib/date-utils';
 import { scheduleDebtReminder } from '@/lib/notifications';
-
-function getTodayRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { startMs: start.getTime(), endMs: end.getTime() };
-}
-
-function getWeekRange() {
-  const start = new Date();
-  const day = start.getDay();
-  const diff = (day + 6) % 7;
-  start.setDate(start.getDate() - diff);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-  return { startMs: start.getTime(), endMs: end.getTime() };
-}
 
 function formatNumberInput(value: string) {
   const digits = value.replace(/[^\d]/g, '');
@@ -126,6 +109,8 @@ export default function SalesScreen() {
     return end;
   });
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [lastSaleId, setLastSaleId] = useState<string | null>(null);
 
   // Computed values
   const cartQuantities = useMemo(() => {
@@ -348,6 +333,7 @@ export default function SalesScreen() {
   }
 
   function addToCart(item: Item) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setCart((prev) => {
       const existing = prev.find((entry) => entry.id === item.id);
       if (existing && existing.qty >= item.stock) return prev;
@@ -472,8 +458,10 @@ export default function SalesScreen() {
         return date;
       });
       await loadSummary();
-      Alert.alert('Sale saved', 'Inventory updated offline.');
+
       if (saved?.saleId) {
+        setLastSaleId(saved.saleId);
+
         // Schedule a push notification for Pay Later sales with a due date
         if (paymentMethod === 'Pay Later' && balance > 0) {
           scheduleDebtReminder({
@@ -488,7 +476,9 @@ export default function SalesScreen() {
             }
           }).catch((err) => console.warn('Could not schedule debt reminder:', err));
         }
-        router.push({ pathname: '/receipt', params: { saleId: saved.saleId } });
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        setShowToast(true);
       }
     } catch (error) {
       Alert.alert('Save failed', 'Could not save this sale. Try again.');
@@ -498,6 +488,16 @@ export default function SalesScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <SuccessToast
+        visible={showToast}
+        onFinish={() => {
+          setShowToast(false);
+          if (lastSaleId) {
+            router.push({ pathname: '/receipt', params: { saleId: lastSaleId } });
+            setLastSaleId(null);
+          }
+        }}
+      />
       <KeyboardAvoidingView
         style={styles.keyboardWrap}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>

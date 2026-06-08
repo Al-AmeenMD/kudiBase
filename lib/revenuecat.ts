@@ -1,4 +1,4 @@
-import Purchases, { CustomerInfo, PurchasesPackage } from 'react-native-purchases';
+import Purchases, { CustomerInfo, PurchasesPackage, PACKAGE_TYPE } from 'react-native-purchases';
 import PurchasesUI from 'react-native-purchases-ui';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
@@ -89,7 +89,7 @@ export async function getMonthlyPackage(): Promise<PurchasesPackage | null> {
   }
   const offerings = await Purchases.getOfferings();
   const available = offerings.current?.availablePackages ?? [];
-  return available.find((pkg) => pkg.packageType === '$rc_monthly') ?? null;
+  return available.find((pkg) => pkg.packageType === PACKAGE_TYPE.MONTHLY) ?? null;
 }
 
 export async function getAnnualPackage(): Promise<PurchasesPackage | null> {
@@ -99,7 +99,7 @@ export async function getAnnualPackage(): Promise<PurchasesPackage | null> {
   }
   const offerings = await Purchases.getOfferings();
   const available = offerings.current?.availablePackages ?? [];
-  return available.find((pkg) => pkg.packageType === '$rc_annual') ?? null;
+  return available.find((pkg) => pkg.packageType === PACKAGE_TYPE.ANNUAL) ?? null;
 }
 
 export async function purchasePackage(pkg: PurchasesPackage): Promise<CustomerInfo | null> {
@@ -124,8 +124,8 @@ export async function presentPaywall(): Promise<CustomerInfo | null> {
   if (!ok) {
     return null;
   }
-  const result = await PurchasesUI.presentPaywall();
-  return result?.customerInfo ?? null;
+  await PurchasesUI.presentPaywall();
+  return getCustomerInfoSafe();
 }
 
 export async function presentCustomerCenter(): Promise<void> {

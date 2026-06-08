@@ -6,7 +6,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/kudibase_logo.png",
-    "scheme": "kudibase",
+    "scheme": [
+      "kudibase",
+      "com.kudibase.app"
+    ],
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
@@ -24,6 +27,22 @@
     },
     "android": {
       "package": "com.kudibase.app",
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            {
+              "scheme": "com.kudibase.app"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "permissions": [
         "android.permission.READ_CONTACTS"
       ],
@@ -72,7 +91,7 @@
     },
     "extra": {
       "revenuecat": {
-        "androidApiKey": "REVENUECAT_ANDROID_API_KEY",
+        "androidApiKey": "goog_ORkRzOiYudWvAoZBeUAcQbeObNA",
         "iosApiKey": "REVENUECAT_IOS_API_KEY",
         "entitlement": "kudibase_pro"
       },

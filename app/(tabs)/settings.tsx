@@ -334,7 +334,7 @@ export default function SettingsScreen() {
                 <View style={styles.bannerText}>
                   <ThemedText style={styles.cardTitle}>Protect your data</ThemedText>
                   <ThemedText style={styles.cardMeta}>
-                    Export a backup or unlock Drive sync with Premium.
+                    Export a backup file and keep it somewhere safe.
                   </ThemedText>
                 </View>
                 <Pressable
@@ -343,11 +343,6 @@ export default function SettingsScreen() {
                   <ThemedText style={styles.bannerButtonText}>Back up now</ThemedText>
                 </Pressable>
               </View>
-              <Pressable
-                onPress={() => router.push('/premium')}
-                style={[styles.bannerUpgrade, { backgroundColor: theme.primary }]}>
-                <ThemedText style={styles.bannerUpgradeText}>Go Premium</ThemedText>
-              </Pressable>
             </View>
           </View>
         ) : null}
@@ -431,8 +426,8 @@ export default function SettingsScreen() {
                 <IconSymbol name="cloud.fill" size={20} color={theme.primaryDeep} />
               </View>
               <View style={styles.rowContent}>
-                <ThemedText style={styles.cardTitle}>Backup & sync</ThemedText>
-                <ThemedText style={styles.cardMeta}>Local export, import, and Drive sync</ThemedText>
+                <ThemedText style={styles.cardTitle}>Backup & data</ThemedText>
+                <ThemedText style={styles.cardMeta}>Local export and import</ThemedText>
               </View>
               <IconSymbol name="chevron.right" size={20} color={theme.muted} />
             </Pressable>

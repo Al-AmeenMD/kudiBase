@@ -1,7 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
+import { EmptyState } from '@/components/empty-state';
+import { ListSkeleton } from '@/components/loading-skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
@@ -26,6 +28,8 @@ export default function InventoryScreen() {
   const { width } = useWindowDimensions();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [showLowStock, setShowLowStock] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const isNarrow = width < 360;
 
@@ -51,10 +55,12 @@ export default function InventoryScreen() {
       }
     }
     loadPreferences().catch(() => { });
-    loadItems().catch((error) => {
-      Alert.alert('Load error', 'Unable to load inventory data.');
-      console.error(error);
-    });
+    loadItems()
+      .catch((error) => {
+        Alert.alert('Load error', 'Unable to load inventory data.');
+        console.error(error);
+      })
+      .finally(() => setLoading(false));
   }, [loadItems]);
 
   useFocusEffect(
@@ -87,9 +93,30 @@ export default function InventoryScreen() {
     return inventoryList.filter((item) => item.stock <= lowStockThreshold);
   }, [inventoryList]);
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadItems();
+    } catch {
+      // silently ignore
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadItems]);
+
   return (
     <ThemedView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
+          />
+        }>
         <View style={styles.header}>
           <ThemedText type="title">Inventory</ThemedText>
           <ThemedText style={styles.caption}>Track stock levels and restock fast.</ThemedText>
@@ -141,20 +168,26 @@ export default function InventoryScreen() {
               styles.card,
               { borderColor: theme.border, backgroundColor: theme.surface },
             ]}>
-            {inventoryList.length === 0 ? (
-              <View style={styles.emptyState}>
-                <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
-                  No inventory yet.
-                </ThemedText>
-              </View>
+            {loading ? (
+              <ListSkeleton rows={4} />
+            ) : inventoryList.length === 0 ? (
+              <EmptyState
+                icon="archivebox.fill"
+                title="No inventory yet"
+                subtitle="Add your first item to start tracking stock."
+                actionLabel="Add item"
+                onAction={() => router.push('/inventory-item')}
+              />
             ) : (
               inventoryList.map((item, index) => (
                 <Pressable
                   key={item.id}
                   onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
-                  style={[
+                  android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
+                  style={({ pressed }) => [
                     styles.row,
                     index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
+                    pressed && styles.pressed,
                   ]}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
                     <ThemedText style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">
@@ -195,19 +228,21 @@ export default function InventoryScreen() {
             ]}>
             {showLowStock ? (
               lowStockList.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
-                    No low stock items.
-                  </ThemedText>
-                </View>
+                <EmptyState
+                  icon="checkmark.circle.fill"
+                  title="All stocked up"
+                  subtitle="No items are running low."
+                />
               ) : (
                 lowStockList.map((item, index) => (
                   <Pressable
                     key={item.id}
                     onPress={() => router.push({ pathname: '/inventory-item', params: { id: item.id } })}
-                    style={[
+                    android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
+                    style={({ pressed }) => [
                       styles.row,
                       index > 0 && [styles.rowDivider, { borderTopColor: theme.border }],
+                      pressed && styles.pressed,
                     ]}>
                     <View style={{ flex: 1, paddingRight: 10 }}>
                       <ThemedText style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">
@@ -224,11 +259,11 @@ export default function InventoryScreen() {
                 ))
               )
             ) : (
-              <View style={styles.emptyState}>
-                <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
-                  Low stock list hidden.
-                </ThemedText>
-              </View>
+              <EmptyState
+                icon="eye.slash.fill"
+                title="Low stock list hidden"
+                subtitle="Tap 'Show' above to see items running low."
+              />
             )}
           </View>
         </View>
@@ -328,11 +363,9 @@ const styles = StyleSheet.create({
   },
   itemName: { fontSize: 15 },
   itemMeta: { fontSize: 12, opacity: 0.6 },
-  emptyState: {
-    padding: 16,
-    alignItems: 'center',
+  pressed: {
+    opacity: 0.85,
   },
-  emptyText: { fontSize: 13 },
   stockPill: {
     minWidth: 36,
     paddingHorizontal: 10,

@@ -72,7 +72,7 @@ export default function SalesRecordsScreen() {
       subtotal: number;
       amount_paid: number;
       balance_due: number;
-      customer_name: string | null;
+      customer_name?: string | null;
       created_at: number;
     }>
   >([]);
@@ -128,12 +128,6 @@ export default function SalesRecordsScreen() {
   });
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
-  const loadSalesRef = useRef(loadSales);
-
-  useEffect(() => {
-    loadSalesRef.current = loadSales;
-  }, [loadSales]);
-
   const summaryBlockBasis = width >= 600 ? '31%' : '48%';
 
   const rangeWindow = useMemo(() => {
@@ -320,6 +314,12 @@ export default function SalesRecordsScreen() {
       setForecast(null);
     }
   }, [deadStockWindow, forecastWindow, rangeWindow.endMs, rangeWindow.startMs]);
+
+  const loadSalesRef = useRef(loadSales);
+
+  useEffect(() => {
+    loadSalesRef.current = loadSales;
+  }, [loadSales]);
 
   useEffect(() => {
     loadSales().catch((error) => {

@@ -52,7 +52,13 @@ export async function withDb<T>(task: (db: SQLite.SQLiteDatabase) => Promise<T>)
 }
 
 export async function execute(sql: string, params: SqlParams = []): Promise<void> {
-    await withDb((db) => db.runAsync(sql, params));
+    await withDb(async (db) => {
+        if (params.length === 0) {
+            await db.execAsync(sql);
+        } else {
+            await db.runAsync(sql, params);
+        }
+    });
 }
 
 export async function query<T>(sql: string, params: SqlParams = []): Promise<T[]> {

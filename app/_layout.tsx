@@ -1,11 +1,10 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { useEffect, useState } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
-import { useRouter, useSegments } from 'expo-router';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { refreshPlanTier } from '@/lib/subscription';
@@ -55,22 +54,22 @@ export default function RootLayout() {
     if (isOnboarding) {
       return;
     }
+
     async function checkOnboarding() {
-      await initDb();
-      const completed = await getAppSetting('onboarding_complete');
-
-      if (completed === 'true') {
-        setCheckedOnboarding(true);
-        return;
-      }
-
-      // Check if there's an existing Supabase session (returning user)
       try {
+        await initDb();
+
+        const completed = await getAppSetting('onboarding_complete');
+
+        if (completed === 'true') {
+          setCheckedOnboarding(true);
+          return;
+        }
+
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           const meta = session.user.user_metadata;
           if (meta?.business_name) {
-            // Restore profile from Supabase metadata into local SQLite
             await upsertBusinessProfile({
               businessName: meta.business_name,
               ownerName: meta.owner_name ?? '',
@@ -85,51 +84,54 @@ export default function RootLayout() {
             return;
           }
         }
-      } catch {
-        // Session check failed, proceed to onboarding
+      } catch (err) {
+        console.error('Startup error:', err);
+      } finally {
+        setCheckedOnboarding(true);
       }
-
-      router.replace('/onboarding');
-      setCheckedOnboarding(true);
     }
-    checkOnboarding().catch(() => {});
+
+    checkOnboarding();
   }, [checkedOnboarding, error, loaded, router, segments]);
 
   useEffect(() => {
-    console.log('------------------------------------');
-    console.log('DEBUG: RootLayout Mounted');
-    console.log('------------------------------------');
+    const hasSegments = (segments as string[]).length > 0;
+    if (checkedOnboarding && !hasSegments) {
+      async function checkRedirect() {
+        const completed = await getAppSetting('onboarding_complete');
+        if (completed !== 'true') {
+          router.replace('/onboarding');
+        }
+      }
+      checkRedirect();
+    }
+  }, [checkedOnboarding, router, segments]);
 
+  useEffect(() => {
     async function checkAndRegister() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        console.log('DEBUG: Current Session User:', session?.user?.email || 'None');
         
         if (session?.user) {
-          console.log('DEBUG: Fetching push token...');
           const token = await getPushToken();
-          console.log('DEBUG: Push Token Result:', token);
           
           if (token) {
-            console.log('DEBUG: Saving to Supabase...');
             const { error } = await supabase.from('push_tokens').upsert({
               user_id: session.user.id,
               token: token,
             }, { onConflict: 'user_id,token' });
             
-            if (error) console.error('DEBUG ERROR:', error.message);
-            else console.log('DEBUG: SUCCESS! Token registered.');
+            if (error) console.error('Push token registration failed:', error.message);
           }
         }
       } catch (err) {
-        console.error('DEBUG CATCH ERROR:', err);
+        console.error('Push token error:', err);
       }
     }
 
     checkAndRegister();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('DEBUG: Auth Event:', event);
       if (event === 'SIGNED_IN') {
         checkAndRegister();
       }
@@ -138,27 +140,28 @@ export default function RootLayout() {
     return () => subscription.unsubscribe();
   }, [checkedOnboarding]);
 
-  if (!loaded && !error) {
+  if ((!loaded && !error) || !checkedOnboarding) {
     return null;
   }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', headerShown: true }} />
+      <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+        <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', headerShown: true, animation: 'fade' }} />
         <Stack.Screen name="receipt" />
         <Stack.Screen name="receipts" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="reminder" />
         <Stack.Screen name="backup" />
+        <Stack.Screen name="oauthredirect" />
         <Stack.Screen name="record-payment" />
         <Stack.Screen name="inventory-item" />
         <Stack.Screen name="stock-adjust" />
         <Stack.Screen name="privacy" />
         <Stack.Screen name="help" />
         <Stack.Screen name="sales-records" />
-        <Stack.Screen name="premium" />
+        <Stack.Screen name="premium" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="restore" />
         <Stack.Screen name="manage-subscription" />
       </Stack>
