@@ -35,6 +35,10 @@ const MAPPING = {
   'chart.bar.fill': 'bar-chart',
   'star.fill': 'star',
   'crown.fill': 'emoji-events',
+  'cube.fill': 'inventory-2',
+  'eye.slash.fill': 'visibility-off',
+  'hammer.fill': 'build',
+  'xmark': 'close',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
 } as IconMapping;

@@ -72,22 +72,26 @@ export default function InventoryScreen() {
     }, [loadItems])
   );
 
+  const activeItems = useMemo(() => {
+    return items.filter((item) => item.stock > 0);
+  }, [items]);
+
   const inventoryList = useMemo(() => {
-    return items.map((item) => ({
+    return activeItems.map((item) => ({
       ...item,
       status: item.stock <= 5 ? 'Low stock' : 'In stock',
     }));
-  }, [items]);
+  }, [activeItems]);
 
   const inventoryTotals = useMemo(() => {
-    const totalUnits = items.reduce((sum, item) => sum + item.stock, 0);
-    const totalCost = items.reduce((sum, item) => sum + item.stock * item.cost, 0);
+    const totalUnits = activeItems.reduce((sum, item) => sum + item.stock, 0);
+    const totalCost = activeItems.reduce((sum, item) => sum + item.stock * item.cost, 0);
     return {
       totalUnits,
       totalCost,
-      itemCount: items.length,
+      itemCount: activeItems.length,
     };
-  }, [items]);
+  }, [activeItems]);
 
   const lowStockList = useMemo(() => {
     return inventoryList.filter((item) => item.stock <= lowStockThreshold);
@@ -173,10 +177,14 @@ export default function InventoryScreen() {
             ) : inventoryList.length === 0 ? (
               <EmptyState
                 icon="archivebox.fill"
-                title="No inventory yet"
-                subtitle="Add your first item to start tracking stock."
-                actionLabel="Add item"
-                onAction={() => router.push('/inventory-item')}
+                title={items.length === 0 ? 'No inventory yet' : 'No in-stock items'}
+                subtitle={
+                  items.length === 0
+                    ? 'Add your first item to start tracking stock.'
+                    : 'Restock an item to show it here again.'
+                }
+                actionLabel={items.length === 0 ? 'Add item' : 'Stock In/Out'}
+                onAction={() => router.push(items.length === 0 ? '/inventory-item' : '/stock-adjust')}
               />
             ) : (
               inventoryList.map((item, index) => (

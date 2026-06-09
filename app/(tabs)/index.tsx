@@ -180,7 +180,6 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.heroGlow, { backgroundColor: theme.secondary }]} />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -192,14 +191,22 @@ export default function HomeScreen() {
             colors={[theme.primary]}
           />
         }>
-        <View style={styles.header}>
+        <View
+          style={[
+            styles.header,
+            {
+              backgroundColor: colorScheme === 'light' ? theme.secondary : theme.surface,
+              borderColor: theme.border,
+            },
+          ]}>
+          <View style={[styles.headerAccent, { backgroundColor: theme.primary }]} />
           <View style={styles.brandRow}>
             <Image source={require('@/assets/images/kudibase_logo.png')} style={styles.logo} />
-            <View>
-              <ThemedText type="subtitle">
+            <View style={styles.brandCopy}>
+              <ThemedText type="subtitle" style={styles.brandTitle}>
                 KudiBase
               </ThemedText>
-              <ThemedText style={[styles.brandCaption, { color: theme.muted }]}>
+              <ThemedText style={[styles.brandCaption, { color: colorScheme === 'light' ? theme.primaryDeep : theme.muted }]}>
                 Your offline shop assistant
               </ThemedText>
             </View>
@@ -207,8 +214,19 @@ export default function HomeScreen() {
           <Pressable
             onPress={() => router.push('/profile')}
             android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
-            style={({ pressed }) => [styles.pill, { backgroundColor: theme.surface }, pressed && styles.pressed]}>
-            <ThemedText style={styles.pillText}>{businessName}</ThemedText>
+            style={({ pressed }) => [
+              styles.pill,
+              {
+                backgroundColor: colorScheme === 'light' ? '#FFFFFF' : theme.secondary,
+                borderColor: colorScheme === 'light' ? 'rgba(15,106,61,0.16)' : 'transparent',
+              },
+              pressed && styles.pressed,
+            ]}>
+            <ThemedText
+              style={[styles.pillText, { color: colorScheme === 'light' ? theme.primaryDeep : theme.onSecondary }]}
+              numberOfLines={1}>
+              {businessName}
+            </ThemedText>
           </Pressable>
         </View>
 
@@ -422,23 +440,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  heroGlow: {
-    position: 'absolute',
-    top: -120,
-    left: -40,
-    right: -40,
-    height: 280,
-    borderBottomLeftRadius: 180,
-    borderBottomRightRadius: 180,
-    opacity: 0.8,
-  },
   scrollContent: {
     padding: 20,
     paddingBottom: 40,
     gap: 24,
   },
   header: {
-    gap: 14,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+    overflow: 'hidden',
+  },
+  headerAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
   brandRow: {
     flexDirection: 'row',
@@ -446,23 +465,31 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logo: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+  },
+  brandCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  brandTitle: {
+    lineHeight: 24,
   },
   brandCaption: {
-    fontSize: 14,
-    opacity: 0.8,
+    fontSize: 13,
+    opacity: 0.9,
   },
   pill: {
     alignSelf: 'flex-start',
+    maxWidth: '100%',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
+    borderWidth: 1,
   },
   pillText: {
     fontSize: 13,
-    opacity: 0.75,
   },
   pressed: {
     opacity: 0.85,

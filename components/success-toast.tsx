@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withDelay,
   withSequence,
   withTiming,
@@ -11,6 +13,8 @@ import Animated, {
 
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 type SuccessToastProps = {
   visible: boolean;
@@ -23,20 +27,22 @@ type SuccessToastProps = {
  * (e.g. completing a sale) before navigating to the next screen.
  */
 export function SuccessToast({ visible, message = 'Sale saved!', onFinish }: SuccessToastProps) {
-  const scale = useSharedValue(0);
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+  const insets = useSafeAreaInsets();
   const opacity = useSharedValue(0);
+  const translateY = useSharedValue(18);
+  const scale = useSharedValue(0.96);
 
   useEffect(() => {
     if (visible) {
-      scale.value = withSequence(
-        withTiming(1.1, { duration: 200 }),
-        withTiming(1, { duration: 100 })
-      );
+      translateY.value = withSpring(0, { damping: 18, stiffness: 220 });
+      scale.value = withSpring(1, { damping: 16, stiffness: 220 });
       opacity.value = withSequence(
-        withTiming(1, { duration: 150 }),
+        withTiming(1, { duration: 140 }),
         withDelay(
-          600,
-          withTiming(0, { duration: 250 }, (finished) => {
+          850,
+          withTiming(0, { duration: 220 }, (finished) => {
             if (finished && onFinish) {
               runOnJS(onFinish)();
             }
@@ -44,25 +50,38 @@ export function SuccessToast({ visible, message = 'Sale saved!', onFinish }: Suc
         )
       );
     } else {
-      scale.value = 0;
       opacity.value = 0;
+      translateY.value = 18;
+      scale.value = 0.96;
     }
-  }, [visible, onFinish, opacity, scale]);
+  }, [visible, onFinish, opacity, scale, translateY]);
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ scale: scale.value }],
+    transform: [{ translateY: translateY.value }, { scale: scale.value }],
   }));
 
   if (!visible) return null;
 
   return (
-    <View style={styles.backdrop}>
-      <Animated.View style={[styles.toast, containerStyle]}>
-        <View style={styles.iconCircle}>
-          <IconSymbol name="checkmark" size={32} color="#FFFFFF" />
+    <View pointerEvents="none" style={[styles.backdrop, { paddingBottom: Math.max(insets.bottom, 12) + 84 }]}>
+      <Animated.View
+        style={[
+          styles.toast,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            shadowColor: colorScheme === 'dark' ? '#000000' : '#1E1E1E',
+          },
+          containerStyle,
+        ]}>
+        <View style={[styles.iconCircle, { backgroundColor: theme.primary }]}>
+          <IconSymbol name="checkmark.circle.fill" size={22} color="#FFFFFF" />
         </View>
-        <ThemedText style={styles.message}>{message}</ThemedText>
+        <View style={styles.copy}>
+          <ThemedText style={[styles.message, { color: theme.text }]}>{message}</ThemedText>
+          <ThemedText style={[styles.detail, { color: theme.muted }]}>Opening receipt...</ThemedText>
+        </View>
       </Animated.View>
     </View>
   );
@@ -71,34 +90,43 @@ export function SuccessToast({ visible, message = 'Sale saved!', onFinish }: Suc
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
     zIndex: 999,
   },
   toast: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingHorizontal: 32,
-    paddingVertical: 28,
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     alignItems: 'center',
+    flexDirection: 'row',
     gap: 12,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 10,
   },
   iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#0F6A3D',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  copy: {
+    flex: 1,
+    gap: 2,
+  },
   message: {
-    fontSize: 16,
-    color: '#111111',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  detail: {
+    fontSize: 12,
   },
 });

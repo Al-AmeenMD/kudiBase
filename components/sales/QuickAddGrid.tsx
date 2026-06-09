@@ -29,17 +29,18 @@ export function QuickAddGrid({
     const theme = Colors[colorScheme];
     const { format } = useCurrency();
 
+    const inStockItems = items.filter((item) => item.stock > 0);
     const term = searchQuery.trim().toLowerCase();
     const filtered = term
-        ? items.filter((item) => item.name.toLowerCase().includes(term))
-        : items;
+        ? inStockItems.filter((item) => item.name.toLowerCase().includes(term))
+        : inStockItems;
     const quickAddItems = term || showAll ? filtered : filtered.slice(0, 10);
 
     return (
         <View style={styles.container}>
             <View style={styles.sectionHeader}>
                 <ThemedText type="subtitle">Quick add items</ThemedText>
-                {items.length > 10 && !searchQuery.trim() ? (
+                {inStockItems.length > 10 && !searchQuery.trim() ? (
                     <Pressable onPress={onShowAllToggle}>
                         <ThemedText style={styles.viewAllText}>
                             {showAll ? 'Show less' : 'View all'}
@@ -61,18 +62,17 @@ export function QuickAddGrid({
                 {quickAddItems.map((item) => {
                     const qtyInCart = cartQuantities[item.id] ?? 0;
                     const isAtLimit = qtyInCart >= item.stock;
-                    const isOutOfStock = item.stock === 0 || isAtLimit;
-                    const statusLabel = isOutOfStock ? 'Out of stock' : '';
+                    const statusLabel = isAtLimit ? 'All in cart' : '';
 
                     return (
                         <Pressable
                             key={item.id}
                             onPress={() => onAddToCart(item)}
-                            disabled={isOutOfStock || isAtLimit}
+                            disabled={isAtLimit}
                             style={[
                                 styles.itemCard,
                                 { backgroundColor: theme.surface, borderColor: theme.border },
-                                (isOutOfStock || isAtLimit) && styles.itemCardDisabled,
+                                isAtLimit && styles.itemCardDisabled,
                             ]}>
                             <ThemedText style={styles.itemName} numberOfLines={2} ellipsizeMode="tail">
                                 {item.name}
@@ -97,7 +97,7 @@ export function QuickAddGrid({
                 {quickAddItems.length === 0 ? (
                     <View style={styles.emptyState}>
                         <ThemedText style={[styles.emptyText, { color: theme.muted }]}>
-                            No matching items.
+                            {items.length === 0 ? 'No inventory items yet.' : 'No in-stock items found.'}
                         </ThemedText>
                     </View>
                 ) : null}

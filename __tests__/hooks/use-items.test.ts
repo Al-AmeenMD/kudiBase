@@ -13,9 +13,13 @@ describe('useItems', () => {
         jest.clearAllMocks();
     });
 
-    it('should start with loading true', () => {
+    it('should start with loading true', async () => {
         const { result } = renderHook(() => useItems());
         expect(result.current.loading).toBe(true);
+
+        await waitFor(() => {
+            expect(result.current.loading).toBe(false);
+        });
     });
 
     it('should return empty items array initially', async () => {
