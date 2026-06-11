@@ -21,7 +21,7 @@ type NoticeState = {
   onDone?: () => void;
 };
 
-const FEATURES: Array<{ title: string; description: string; icon: IconSymbolName }> = [
+const FEATURES: { title: string; description: string; icon: IconSymbolName }[] = [
   {
     title: 'Professional Exports',
     description: 'Generate PDF and CSV reports for sales, profit, products, and customers.',

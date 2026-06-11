@@ -52,7 +52,7 @@ export default function ReceiptScreen() {
     created_at: number;
   } | null>(null);
   const [items, setItems] = useState<
-    Array<{ id: string; name_snapshot: string; unit_price: number; quantity: number; line_total: number }>
+    { id: string; name_snapshot: string; unit_price: number; quantity: number; line_total: number }[]
   >([]);
   const [sharing, setSharing] = useState(false);
 

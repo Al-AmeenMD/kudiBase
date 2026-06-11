@@ -49,6 +49,7 @@ export function AppAlertHost() {
   const originalAlert = useRef(Alert.alert);
 
   useEffect(() => {
+    const original = originalAlert.current;
     Alert.alert = (title, message, buttons) => {
       setAlertState({
         title: String(title ?? ''),
@@ -58,7 +59,7 @@ export function AppAlertHost() {
     };
 
     return () => {
-      Alert.alert = originalAlert.current;
+      Alert.alert = original;
     };
   }, []);
 

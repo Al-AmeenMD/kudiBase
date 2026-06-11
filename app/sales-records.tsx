@@ -65,7 +65,7 @@ export default function SalesRecordsScreen() {
   const { width } = useWindowDimensions();
   const router = useRouter();
   const [sales, setSales] = useState<
-    Array<{
+    {
       id: string;
       sale_number: number;
       payment_method: string;
@@ -74,25 +74,25 @@ export default function SalesRecordsScreen() {
       balance_due: number;
       customer_name?: string | null;
       created_at: number;
-    }>
+    }[]
   >([]);
   const [summary, setSummary] = useState({ totalSales: 0, totalPaid: 0, totalDue: 0, saleCount: 0 });
   const [byMethod, setByMethod] = useState<
-    Array<{ payment_method: string; total_sales: number; total_paid: number; sale_count: number }>
+    { payment_method: string; total_sales: number; total_paid: number; sale_count: number }[]
   >([]);
-  const [dailyTotals, setDailyTotals] = useState<Array<{ day: string; total_sales: number; sale_count: number }>>([]);
-  const [dailyProfit, setDailyProfit] = useState<Array<{ day: string; profit: number }>>([]);
-  const [topItems, setTopItems] = useState<Array<{ name: string; total_qty: number; total_sales: number }>>([]);
+  const [dailyTotals, setDailyTotals] = useState<{ day: string; total_sales: number; sale_count: number }[]>([]);
+  const [dailyProfit, setDailyProfit] = useState<{ day: string; profit: number }[]>([]);
+  const [topItems, setTopItems] = useState<{ name: string; total_qty: number; total_sales: number }[]>([]);
   const [profitSummary, setProfitSummary] = useState<{ profit: number; revenue: number }>({
     profit: 0,
     revenue: 0,
   });
-  const [topProfitItems, setTopProfitItems] = useState<Array<{ name: string; profit: number; total_qty: number }>>([]);
+  const [topProfitItems, setTopProfitItems] = useState<{ name: string; profit: number; total_qty: number }[]>([]);
   const [topCustomers, setTopCustomers] = useState<
-    Array<{ name: string; total_sales: number; sale_count: number }>
+    { name: string; total_sales: number; sale_count: number }[]
   >([]);
   const [repeatCustomers, setRepeatCustomers] = useState<
-    Array<{ name: string; sale_count: number; total_sales: number; last_purchase: number }>
+    { name: string; sale_count: number; total_sales: number; last_purchase: number }[]
   >([]);
   const [forecast, setForecast] = useState<{
     window: number;
@@ -101,7 +101,7 @@ export default function SalesRecordsScreen() {
     projectedDue: number;
   } | null>(null);
   const [forecastWindow, setForecastWindow] = useState<7 | 30>(7);
-  const [deadStock, setDeadStock] = useState<Array<{ id: string; name: string; stock: number; days: number }>>([]);
+  const [deadStock, setDeadStock] = useState<{ id: string; name: string; stock: number; days: number }[]>([]);
   const [deadStockWindow, setDeadStockWindow] = useState<30 | 60 | 90>(30);
   const [comparison, setComparison] = useState<{
     totalSales: number;
@@ -131,7 +131,6 @@ export default function SalesRecordsScreen() {
   const summaryBlockBasis = width >= 600 ? '31%' : '48%';
 
   const rangeWindow = useMemo(() => {
-    const today = new Date();
     if (range === 'today') {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
@@ -427,7 +426,7 @@ export default function SalesRecordsScreen() {
     if (rangeWindow.startMs > rangeWindow.endMs) {
       return [];
     }
-    const series: Array<{ day: string; profit: number }> = [];
+    const series: { day: string; profit: number }[] = [];
     const profitMap = new Map(dailyProfit.map((row) => [row.day, row.profit]));
     const cursor = new Date(rangeWindow.startMs);
     cursor.setHours(0, 0, 0, 0);

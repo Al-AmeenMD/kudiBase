@@ -77,7 +77,7 @@ export default function ReminderScreen() {
       .replaceAll('{accountName}', sampleValues.accountName)
       .replaceAll('{bankName}', sampleValues.bankName)
       .replaceAll('{accountNumber}', sampleValues.accountNumber);
-  }, [profile, template]);
+  }, [format, profile, template]);
 
   async function handleSave() {
     if (!profile?.businessName?.trim()) {

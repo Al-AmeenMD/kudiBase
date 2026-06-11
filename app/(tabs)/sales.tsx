@@ -35,15 +35,6 @@ import { getItems, getRecentCustomers, getSalesSummary, initDb, recordSale, setA
 import { getTodayRange, getWeekRange } from '@/lib/date-utils';
 import { scheduleDebtReminder } from '@/lib/notifications';
 
-function formatNumberInput(value: string) {
-  const digits = value.replace(/[^\d]/g, '');
-  if (!digits) {
-    return '';
-  }
-  const number = Number(digits);
-  return Number.isFinite(number) ? number.toLocaleString('en-NG') : '';
-}
-
 function parseNumberInput(value: string) {
   const digits = value.replace(/[^\d]/g, '');
   return digits ? Number(digits) : 0;
@@ -75,10 +66,10 @@ export default function SalesScreen() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [showCustomerDetails, setShowCustomerDetails] = useState(true);
   const [lastNonPayLaterExpanded, setLastNonPayLaterExpanded] = useState(true);
-  const [recentCustomers, setRecentCustomers] = useState<Array<{ name: string; phone: string | null }>>([]);
+  const [recentCustomers, setRecentCustomers] = useState<{ name: string; phone: string | null }[]>([]);
   const [contactsVisible, setContactsVisible] = useState(false);
   const [contactsLoading, setContactsLoading] = useState(false);
-  const [contactsList, setContactsList] = useState<Array<{ id: string; name: string; phone: string }>>([]);
+  const [contactsList, setContactsList] = useState<{ id: string; name: string; phone: string }[]>([]);
   const [contactsHasNext, setContactsHasNext] = useState(false);
   const [contactsPageOffset, setContactsPageOffset] = useState(0);
   const [contactsLoadingMore, setContactsLoadingMore] = useState(false);
@@ -220,7 +211,7 @@ export default function SalesScreen() {
     } else {
       setShowCustomerDetails(lastNonPayLaterExpanded);
     }
-  }, [lastNonPayLaterExpanded, paymentMethod]);
+  }, [lastNonPayLaterExpanded, paymentMethod, showCustomerDetails]);
 
   const filteredContacts = useMemo(() => {
     const term = contactSearch.trim().toLowerCase();
@@ -235,14 +226,7 @@ export default function SalesScreen() {
     });
   }, [contactSearch, contactsList]);
 
-  useEffect(() => {
-    if (!contactSearch.trim()) return;
-    if (filteredContacts.length > 0) return;
-    if (!contactsHasNext || contactsLoadingMore) return;
-    handleLoadMoreContacts().catch(() => { });
-  }, [contactSearch, contactsHasNext, contactsLoadingMore, filteredContacts.length]);
-
-  async function loadContactsPage(offset: number, limit: number = 200) {
+  const loadContactsPage = useCallback(async (offset: number, limit: number = 200) => {
     const { data, hasNextPage } = await Contacts.getContactsAsync({
       pageSize: limit,
       pageOffset: offset,
@@ -260,7 +244,7 @@ export default function SalesScreen() {
       })
       .filter((contact) => contact.phone.length > 0);
     return { batch, hasNextPage };
-  }
+  }, []);
 
   async function handlePickContact() {
     try {
@@ -283,7 +267,7 @@ export default function SalesScreen() {
     }
   }
 
-  async function handleLoadMoreContacts() {
+  const handleLoadMoreContacts = useCallback(async () => {
     if (contactsLoadingMore || !contactsHasNext) return;
     try {
       setContactsLoadingMore(true);
@@ -297,7 +281,14 @@ export default function SalesScreen() {
     } finally {
       setContactsLoadingMore(false);
     }
-  }
+  }, [contactsHasNext, contactsLoadingMore, contactsPageOffset, loadContactsPage]);
+
+  useEffect(() => {
+    if (!contactSearch.trim()) return;
+    if (filteredContacts.length > 0) return;
+    if (!contactsHasNext || contactsLoadingMore) return;
+    handleLoadMoreContacts().catch(() => { });
+  }, [contactSearch, contactsHasNext, contactsLoadingMore, filteredContacts.length, handleLoadMoreContacts]);
 
   function handleSelectCustomer(name: string, phone?: string | null) {
     setCustomerName(name);

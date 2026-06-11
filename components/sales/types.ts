@@ -17,11 +17,11 @@ export type SalesSummary = {
     totalPaid: number;
     totalDue: number;
     saleCount: number;
-    byMethod: Array<{
+    byMethod: {
         method: string;
         totalSales: number;
         totalPaid: number;
         totalDue: number;
         saleCount: number;
-    }>;
+    }[];
 };

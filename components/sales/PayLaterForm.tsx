@@ -19,7 +19,7 @@ type Props = {
     onDueDateChange: (date: Date) => void;
     onAmountReceivedChange: (amount: string) => void;
     onPickContact: () => void;
-    recentCustomers: Array<{ name: string; phone: string | null }>;
+    recentCustomers: { name: string; phone: string | null }[];
     onSelectRecent: (name: string, phone?: string | null) => void;
 };
 

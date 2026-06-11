@@ -36,7 +36,7 @@ export default function ReceiptsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [receipts, setReceipts] = useState<
-    Array<{
+    {
       id: string;
       sale_number: number;
       payment_method: string;
@@ -45,7 +45,7 @@ export default function ReceiptsScreen() {
       balance_due: number;
       customer_name?: string | null;
       created_at: number;
-    }>
+    }[]
   >([]);
   const [receiptSearch, setReceiptSearch] = useState('');
   const [receiptFilter, setReceiptFilter] = useState<'All' | 'Cash' | 'Transfer' | 'POS' | 'Pay Later'>('All');

@@ -92,13 +92,13 @@ export default function SettingsScreen() {
   const [clearDataModalVisible, setClearDataModalVisible] = useState(false);
   const [plan, setPlan] = useState<'free' | 'premium'>('free');
 
-  const themeOptions: Array<{ value: ThemeMode; label: string }> = [
+  const themeOptions: { value: ThemeMode; label: string }[] = [
     { value: 'system', label: 'System default' },
     { value: 'light', label: 'Light mode' },
     { value: 'dark', label: 'Dark mode' },
   ];
 
-  const currencies: Array<{ code: Currency; label: string }> = [
+  const currencies: { code: Currency; label: string }[] = [
     { code: 'NGN', label: 'NGN (₦)' },
     { code: 'USD', label: 'USD ($)' },
     { code: 'EUR', label: 'EUR (€)' },
@@ -168,6 +168,8 @@ export default function SettingsScreen() {
     if (storedPlan === 'premium' || storedPlan === 'free') {
       setPlan(storedPlan);
     }
+    // The currency list is static; loadSettings should not be recreated on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

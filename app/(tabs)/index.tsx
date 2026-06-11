@@ -38,7 +38,7 @@ export default function HomeScreen() {
     totalPaid: 0,
     totalDue: 0,
     saleCount: 0,
-    byMethod: [] as Array<{ method: string; totalSales: number }>,
+    byMethod: [] as { method: string; totalSales: number }[],
   });
   const [weekStats, setWeekStats] = useState({
     totalSales: 0,
@@ -48,11 +48,11 @@ export default function HomeScreen() {
   });
   const [businessName, setBusinessName] = useState('Add business name');
   const [businessLogoUri, setBusinessLogoUri] = useState<string | null>(null);
-  const [lowStockItems, setLowStockItems] = useState<Array<{ id: string; name: string; stock: number }>>([]);
+  const [lowStockItems, setLowStockItems] = useState<{ id: string; name: string; stock: number }[]>([]);
   const [topDebtors, setTopDebtors] = useState<
-    Array<{ id: string; name: string; amount: number; dueDate?: string | null }>
+    { id: string; name: string; amount: number; dueDate?: string | null }[]
   >([]);
-  const [deadStock, setDeadStock] = useState<Array<{ id: string; name: string; stock: number; days: number }>>([]);
+  const [deadStock, setDeadStock] = useState<{ id: string; name: string; stock: number; days: number }[]>([]);
   const [premium, setPremium] = useState(false);
 
   const loadSummary = useCallback(async () => {
@@ -134,7 +134,7 @@ export default function HomeScreen() {
       }
     });
     return unsubscribe;
-  }, []);
+  }, [loadSummary]);
 
   useEffect(() => {
     const unsubscribe = subscribeDbEvents((event) => {
