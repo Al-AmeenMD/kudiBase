@@ -18,8 +18,30 @@ jest.mock('expo-router', () => ({
     },
 }));
 
+const mockAsyncStorage = new Map();
+
+jest.mock('@react-native-async-storage/async-storage', () => ({
+    getItem: jest.fn((key) => Promise.resolve(mockAsyncStorage.get(key) ?? null)),
+    setItem: jest.fn((key, value) => {
+        mockAsyncStorage.set(key, value);
+        return Promise.resolve();
+    }),
+    removeItem: jest.fn((key) => {
+        mockAsyncStorage.delete(key);
+        return Promise.resolve();
+    }),
+}));
+
 // Mock expo-sqlite
 jest.mock('expo-sqlite', () => ({
+    openDatabaseAsync: jest.fn(() =>
+        Promise.resolve({
+            execAsync: jest.fn(),
+            runAsync: jest.fn(() => Promise.resolve({ changes: 1 })),
+            getAllAsync: jest.fn(() => Promise.resolve([])),
+            withTransactionAsync: jest.fn((task) => task()),
+        })
+    ),
     openDatabaseSync: jest.fn(() => ({
         runSync: jest.fn(),
         getAllSync: jest.fn(() => []),
@@ -41,6 +63,8 @@ jest.mock('expo-haptics', () => ({
 // Mock react-native-purchases
 jest.mock('react-native-purchases', () => ({
     configure: jest.fn(),
+    logIn: jest.fn(() => Promise.resolve({ customerInfo: { entitlements: { active: {} } }, created: false })),
+    logOut: jest.fn(() => Promise.resolve({ entitlements: { active: {} } })),
     getCustomerInfo: jest.fn(() => Promise.resolve({ entitlements: { active: {} } })),
     getOfferings: jest.fn(() => Promise.resolve({ current: null })),
     purchasePackage: jest.fn(),

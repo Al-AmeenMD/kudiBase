@@ -1,15 +1,18 @@
-import { execute, makeId, query, withDb } from './connection';
+import { execute, getActiveDbName, query } from './connection';
 
-let initPromise: Promise<void> | null = null;
+const initPromises = new Map<string, Promise<void>>();
 
 export async function initDb(): Promise<void> {
+    const dbName = getActiveDbName();
+    const initPromise = initPromises.get(dbName);
     if (initPromise) return initPromise;
-    initPromise = doInitDb().catch((error) => {
+    const nextPromise = doInitDb().catch((error) => {
         // Reset so a retry is possible after a failure
-        initPromise = null;
+        initPromises.delete(dbName);
         throw error;
     });
-    return initPromise;
+    initPromises.set(dbName, nextPromise);
+    return nextPromise;
 }
 
 async function doInitDb(): Promise<void> {

@@ -1,36 +1,40 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { IconSymbol, type IconSymbolName } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import {
-  getAnnualPackage,
-  getMonthlyPackage,
-  purchasePackage,
-} from '@/lib/revenuecat';
+import { getAnnualPackage, getMonthlyPackage, purchasePackage } from '@/lib/revenuecat';
 import { getPlanTier, refreshPlanTier } from '@/lib/subscription';
 
-const FEATURES = [
+type NoticeState = {
+  title: string;
+  message: string;
+  variant: 'default' | 'destructive' | 'success';
+  onDone?: () => void;
+};
+
+const FEATURES: Array<{ title: string; description: string; icon: IconSymbolName }> = [
   {
     title: 'Professional Exports',
-    description: 'Generate high-quality PDF and CSV reports for your accounting.',
+    description: 'Generate PDF and CSV reports for sales, profit, products, and customers.',
     icon: 'arrow.up.circle.fill',
   },
   {
     title: 'Smart Reminders',
-    description: 'Auto-send payment reminders to customers via WhatsApp.',
+    description: 'Send polished payment reminders with your business details included.',
     icon: 'bell.fill',
   },
   {
     title: 'Advanced Analytics',
-    description: 'Unlock deep insights into your sales trends and profit margins.',
+    description: 'Unlock deeper insights into sales trends and profit margins.',
     icon: 'chart.bar.fill',
   },
   {
@@ -43,14 +47,20 @@ const FEATURES = [
 export default function PremiumScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const isDark = colorScheme === 'dark';
+  const premiumSurface = isDark ? '#1E2024' : '#FFFFFF';
+  const premiumBorder = isDark ? theme.border : '#E6E0D3';
+  const premiumText = isDark ? theme.text : '#1E1E1E';
+  const premiumMuted = isDark ? theme.muted : '#6B7280';
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  
+
   const [plan, setPlan] = useState<'free' | 'premium'>('free');
   const [monthlyPrice, setMonthlyPrice] = useState<string | null>(null);
   const [annualPrice, setAnnualPrice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyPlan, setBusyPlan] = useState<'monthly' | 'yearly' | null>(null);
+  const [notice, setNotice] = useState<NoticeState | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -58,13 +68,14 @@ export default function PremiumScreen() {
         const [tier, monthlyPkg, annualPkg] = await Promise.all([
           getPlanTier(),
           getMonthlyPackage(),
-          getAnnualPackage()
+          getAnnualPackage(),
         ]);
         setPlan(tier);
-        if (monthlyPkg?.product?.priceString) setMonthlyPrice(monthlyPkg.product.priceString);
-        if (annualPkg?.product?.priceString) setAnnualPrice(annualPkg.product.priceString);
+        setMonthlyPrice(monthlyPkg?.product?.priceString ?? null);
+        setAnnualPrice(annualPkg?.product?.priceString ?? null);
       } catch (error) {
-        console.error('Failed to load packages:', error);
+        console.error('Failed to load premium packages:', error);
+        showNotice('Plans unavailable', 'Unable to load Premium plans right now. Please try again later.');
       } finally {
         setLoading(false);
       }
@@ -72,13 +83,28 @@ export default function PremiumScreen() {
     init();
   }, []);
 
+  function showNotice(
+    title: string,
+    message: string,
+    variant: NoticeState['variant'] = 'destructive',
+    onDone?: () => void
+  ) {
+    setNotice({ title, message, variant, onDone });
+  }
+
+  function closeNotice() {
+    const onDone = notice?.onDone;
+    setNotice(null);
+    onDone?.();
+  }
+
   async function handlePurchase(type: 'monthly' | 'yearly') {
     try {
       setBusyPlan(type);
       const pkg = type === 'monthly' ? await getMonthlyPackage() : await getAnnualPackage();
-      
+
       if (!pkg) {
-        Alert.alert('Plan unavailable', 'This plan is currently not available in your region.');
+        showNotice('Plan unavailable', 'This plan is currently not available in your region.');
         return;
       }
 
@@ -86,12 +112,16 @@ export default function PremiumScreen() {
       if (info) {
         await refreshPlanTier();
         setPlan('premium');
-        Alert.alert('Welcome to Pro!', 'You now have full access to all KudiBase Pro features.');
-        router.back();
+        showNotice(
+          'Premium activated',
+          'You now have access to KudiBase Premium features.',
+          'success',
+          () => router.back()
+        );
       }
     } catch (error: any) {
-      if (error.userCancelled) return;
-      Alert.alert('Purchase Error', 'Something went wrong. Please try again later.');
+      if (error?.userCancelled) return;
+      showNotice('Purchase failed', 'Something went wrong. Please try again later.');
     } finally {
       setBusyPlan(null);
     }
@@ -105,123 +135,166 @@ export default function PremiumScreen() {
     );
   }
 
+  const isPremiumActive = plan === 'premium';
+  const annualAvailable = Boolean(annualPrice);
+  const monthlyAvailable = Boolean(monthlyPrice);
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView
+      lightColor="#F9F6EF"
+      darkColor="#151718"
+      style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Premium Header */}
         <LinearGradient
           colors={[theme.primaryDeep, theme.primary]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}>
-          
           <Pressable onPress={() => router.back()} style={styles.closeButton}>
-            <IconSymbol name="xmark" size={20} color="#FFF" />
+            <IconSymbol name="xmark" size={20} color="#FFFFFF" />
           </Pressable>
 
-          <Animated.View entering={FadeInUp.delay(200)} style={styles.headerContent}>
+          <Animated.View entering={FadeInUp.delay(160)} style={styles.headerContent}>
             <View style={styles.proBadge}>
-              <ThemedText style={styles.proBadgeText}>PRO</ThemedText>
+              <ThemedText style={styles.proBadgeText}>{isPremiumActive ? 'ACTIVE' : 'PREMIUM'}</ThemedText>
             </View>
-            <ThemedText style={styles.headerTitle}>KudiBase Pro</ThemedText>
+            <ThemedText style={styles.headerTitle}>KudiBase Premium</ThemedText>
             <ThemedText style={styles.headerSubtitle}>
-              Empower your business with elite tools
+              Reports, reminders, and insights for growing shops.
             </ThemedText>
           </Animated.View>
         </LinearGradient>
 
         <View style={styles.body}>
-          {/* Features Grid */}
           <View style={styles.featuresContainer}>
             {FEATURES.map((feature, index) => (
-              <Animated.View 
+              <Animated.View
                 key={feature.title}
-                entering={FadeInDown.delay(300 + index * 100)}
-                style={[styles.featureCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                entering={FadeInDown.delay(240 + index * 80)}
+                style={[
+                  styles.featureCard,
+                  {
+                    backgroundColor: premiumSurface,
+                    borderColor: premiumBorder,
+                    shadowOpacity: isDark ? 0.05 : 0.08,
+                  },
+                ]}>
                 <View style={[styles.featureIcon, { backgroundColor: theme.secondary }]}>
-                  <IconSymbol name={feature.icon as any} size={22} color={theme.primaryDeep} />
+                  <IconSymbol name={feature.icon} size={22} color={theme.primaryDeep} />
                 </View>
                 <View style={styles.featureTextContainer}>
-                  <ThemedText style={styles.featureTitle}>{feature.title}</ThemedText>
-                  <ThemedText style={styles.featureDesc}>{feature.description}</ThemedText>
+                  <ThemedText style={[styles.featureTitle, { color: premiumText }]}>{feature.title}</ThemedText>
+                  <ThemedText style={[styles.featureDesc, { color: premiumMuted }]}>
+                    {feature.description}
+                  </ThemedText>
                 </View>
               </Animated.View>
             ))}
           </View>
 
-          {/* Pricing Section */}
-          <View style={styles.pricingContainer}>
-            <ThemedText style={styles.pricingHeader}>Choose Your Plan</ThemedText>
-            
-            {/* Yearly Plan (Highlight) */}
-            <Pressable 
-              onPress={() => handlePurchase('yearly')}
-              disabled={plan === 'premium' || busyPlan !== null}
-              style={[
-                styles.planCard, 
-                styles.yearlyCard, 
-                { borderColor: theme.primary }
-              ]}>
-              <View style={styles.planInfo}>
-                <View style={styles.planTitleRow}>
-                  <ThemedText style={styles.planName}>Yearly Access</ThemedText>
-                  <View style={styles.saveBadge}>
-                    <ThemedText style={styles.saveBadgeText}>SAVE 20%</ThemedText>
-                  </View>
+          {isPremiumActive ? (
+            <View style={styles.pricingContainer}>
+              <ThemedText style={styles.pricingHeader}>Subscription</ThemedText>
+              <View style={[styles.activeCard, { backgroundColor: premiumSurface, borderColor: premiumBorder }]}>
+                <ThemedText style={[styles.activeTitle, { color: premiumText }]}>Premium is active</ThemedText>
+                <ThemedText style={[styles.activeText, { color: premiumMuted }]}>
+                  Manage billing or restore your purchase from the store account used to subscribe.
+                </ThemedText>
+                <View style={styles.activeActions}>
+                  <Pressable
+                    onPress={() => router.push('/manage-subscription')}
+                    style={[styles.secondaryButton, { borderColor: theme.border }]}>
+                    <ThemedText style={styles.secondaryButtonText}>Manage</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.push('/restore')}
+                    style={[styles.secondaryButton, { borderColor: theme.border }]}>
+                    <ThemedText style={styles.secondaryButtonText}>Restore</ThemedText>
+                  </Pressable>
                 </View>
-                <ThemedText style={styles.planSubtitle}>Best value for growing businesses</ThemedText>
               </View>
-              <View style={styles.planPriceContainer}>
-                <ThemedText style={styles.planPrice}>{annualPrice || '₦10,000'}</ThemedText>
-                <ThemedText style={styles.planPeriod}>/ year</ThemedText>
-              </View>
-              {busyPlan === 'yearly' && <ActivityIndicator style={styles.planLoader} color="#FFF" />}
-            </Pressable>
+            </View>
+          ) : (
+            <View style={styles.pricingContainer}>
+              <ThemedText style={styles.pricingHeader}>Choose Your Plan</ThemedText>
 
-            {/* Monthly Plan */}
-            <Pressable 
-              onPress={() => handlePurchase('monthly')}
-              disabled={plan === 'premium' || busyPlan !== null}
-              style={[
-                styles.planCard, 
-                { backgroundColor: theme.surface, borderColor: theme.border }
-              ]}>
-              <View style={styles.planInfo}>
-                <ThemedText style={[styles.planName, { color: theme.text }]}>Monthly</ThemedText>
-                <ThemedText style={styles.planSubtitle}>Flexible, pay as you go</ThemedText>
-              </View>
-              <View style={styles.planPriceContainer}>
-                <ThemedText style={[styles.planPrice, { color: theme.text }]}>{monthlyPrice || '₦1,000'}</ThemedText>
-                <ThemedText style={styles.planPeriod}>/ mo</ThemedText>
-              </View>
-              {busyPlan === 'monthly' && <ActivityIndicator style={styles.planLoader} color={theme.primary} />}
-            </Pressable>
-          </View>
+              <Pressable
+                onPress={() => handlePurchase('yearly')}
+                disabled={busyPlan !== null || !annualAvailable}
+                style={[
+                  styles.planCard,
+                  styles.yearlyCard,
+                  { borderColor: theme.primary },
+                  !annualAvailable && styles.planDisabled,
+                ]}>
+                <View style={styles.planInfo}>
+                  <View style={styles.planTitleRow}>
+                    <ThemedText style={styles.planName}>Yearly Access</ThemedText>
+                    <View style={styles.saveBadge}>
+                      <ThemedText style={styles.saveBadgeText}>SAVE 20%</ThemedText>
+                    </View>
+                  </View>
+                  <ThemedText style={styles.planSubtitle}>Best value for growing businesses</ThemedText>
+                </View>
+                <View style={styles.planPriceContainer}>
+                  {busyPlan === 'yearly' ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : annualPrice ? (
+                    <>
+                      <ThemedText style={styles.planPrice}>{annualPrice}</ThemedText>
+                      <ThemedText style={styles.planPeriod}>/ year</ThemedText>
+                    </>
+                  ) : (
+                    <ThemedText style={styles.unavailableOnPrimary}>Unavailable</ThemedText>
+                  )}
+                </View>
+              </Pressable>
 
-          {/* Social Proof */}
-          <View style={styles.trustBar}>
-            <IconSymbol name="checkmark.seal.fill" size={16} color={theme.primary} />
-            <ThemedText style={styles.trustText}>
-              Trusted by 5,000+ Nigerian Small Businesses
-            </ThemedText>
-          </View>
-
-          {/* Footer Links */}
-          <View style={styles.footer}>
-            <Pressable onPress={() => router.push('/restore')}>
-              <ThemedText style={styles.footerLink}>Restore Purchase</ThemedText>
-            </Pressable>
-            <View style={styles.dot} />
-            <Pressable onPress={() => router.push('/privacy')}>
-              <ThemedText style={styles.footerLink}>Privacy Policy</ThemedText>
-            </Pressable>
-            <View style={styles.dot} />
-            <Pressable>
-              <ThemedText style={styles.footerLink}>Terms</ThemedText>
-            </Pressable>
-          </View>
+              <Pressable
+                onPress={() => handlePurchase('monthly')}
+                disabled={busyPlan !== null || !monthlyAvailable}
+                style={[
+                  styles.planCard,
+                  { backgroundColor: premiumSurface, borderColor: premiumBorder },
+                  !monthlyAvailable && styles.planDisabled,
+                ]}>
+                <View style={styles.planInfo}>
+                  <ThemedText style={[styles.planName, { color: premiumText }]}>Monthly</ThemedText>
+                  <ThemedText style={[styles.planSubtitle, { color: premiumMuted }]}>
+                    Flexible, pay as you go
+                  </ThemedText>
+                </View>
+                <View style={styles.planPriceContainer}>
+                  {busyPlan === 'monthly' ? (
+                    <ActivityIndicator color={theme.primary} size="small" />
+                  ) : monthlyPrice ? (
+                    <>
+                      <ThemedText style={[styles.planPrice, { color: premiumText }]}>{monthlyPrice}</ThemedText>
+                      <ThemedText style={[styles.planPeriod, { color: premiumMuted }]}>/ month</ThemedText>
+                    </>
+                  ) : (
+                    <ThemedText style={[styles.unavailableText, { color: premiumMuted }]}>
+                      Unavailable
+                    </ThemedText>
+                  )}
+                </View>
+              </Pressable>
+            </View>
+          )}
         </View>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={notice !== null}
+        title={notice?.title ?? ''}
+        message={notice?.message ?? ''}
+        confirmLabel="OK"
+        iconName={notice?.variant === 'success' ? 'checkmark.circle.fill' : 'questionmark.circle.fill'}
+        variant={notice?.variant ?? 'default'}
+        showCancel={false}
+        onCancel={closeNotice}
+        onConfirm={closeNotice}
+      />
     </ThemedView>
   );
 }
@@ -260,17 +333,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   proBadgeText: {
-    color: '#FFF',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 1,
   },
   headerTitle: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#FFF',
+    color: '#FFFFFF',
     marginBottom: 8,
-    letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 16,
@@ -291,9 +362,10 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 20,
     borderWidth: 1,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     gap: 16,
-    shadowColor: '#000',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
@@ -316,7 +388,6 @@ const styles = StyleSheet.create({
   },
   featureDesc: {
     fontSize: 12,
-    opacity: 0.6,
     lineHeight: 16,
   },
   pricingContainer: {
@@ -327,7 +398,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 1,
     opacity: 0.5,
     textAlign: 'center',
     marginBottom: 4,
@@ -339,6 +409,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
   yearlyCard: {
     backgroundColor: '#0F6A3D',
@@ -355,12 +426,13 @@ const styles = StyleSheet.create({
   planTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
   },
   planName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#FFF',
+    color: '#FFFFFF',
   },
   planSubtitle: {
     fontSize: 12,
@@ -373,26 +445,34 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   saveBadgeText: {
-    color: '#FFF',
+    color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '800',
   },
   planPriceContainer: {
+    minWidth: 92,
     alignItems: 'flex-end',
   },
   planPrice: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#FFF',
+    color: '#FFFFFF',
+    textAlign: 'right',
   },
   planPeriod: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.6)',
   },
-  planLoader: {
-    position: 'absolute',
-    right: 10,
-    top: 10,
+  unavailableText: {
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  unavailableOnPrimary: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
   },
   trustBar: {
     flexDirection: 'row',
@@ -406,22 +486,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     opacity: 0.5,
   },
-  footer: {
+  activeCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 10,
+  },
+  activeTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  activeText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  activeActions: {
     flexDirection: 'row',
+    gap: 10,
+    paddingTop: 4,
+  },
+  secondaryButton: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
   },
-  footerLink: {
-    fontSize: 12,
-    fontWeight: '500',
-    opacity: 0.4,
+  secondaryButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+  planDisabled: {
+    opacity: 0.72,
   },
 });
-

@@ -1,8 +1,10 @@
 // Re-export all database functions for backwards compatibility
 // All imports from '@/lib/db' will continue to work
 
-export { execute, getDb, makeId, query, withDb } from './connection';
+export { getActiveDbName, execute, getDb, makeId, query, setActiveLocalUser, withDb } from './connection';
 export type { SqlParams } from './connection';
+
+export { activateLocalDataForUser, deactivateLocalDataUser } from './account';
 
 export { initDb } from './schema';
 

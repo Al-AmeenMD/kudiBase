@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -20,6 +21,7 @@ export default function BackupScreen() {
   const insets = useSafeAreaInsets();
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [pendingImportUri, setPendingImportUri] = useState<string | null>(null);
 
   async function handleExport() {
     try {
@@ -48,32 +50,31 @@ export default function BackupScreen() {
       if (result.canceled || !result.assets?.[0]) {
         return;
       }
-      Alert.alert('Import data', 'This will replace existing data. Continue?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Import',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setImporting(true);
-              const file = result.assets[0];
-              const content = await FileSystem.readAsStringAsync(file.uri);
-              const payload = JSON.parse(content);
-              await initDb();
-              await importData(payload);
-              Alert.alert('Import complete', 'Your data has been restored.');
-            } catch (error) {
-              Alert.alert('Import failed', 'Unable to import this file.');
-              console.error(error);
-            } finally {
-              setImporting(false);
-            }
-          },
-        },
-      ]);
+      setPendingImportUri(result.assets[0].uri);
     } catch (error) {
       Alert.alert('Import failed', 'Unable to import this file.');
       console.error(error);
+    }
+  }
+
+  async function confirmImport() {
+    if (!pendingImportUri) {
+      return;
+    }
+
+    try {
+      setImporting(true);
+      const content = await FileSystem.readAsStringAsync(pendingImportUri);
+      const payload = JSON.parse(content);
+      await initDb();
+      await importData(payload);
+      setPendingImportUri(null);
+      Alert.alert('Import complete', 'Your data has been restored.');
+    } catch (error) {
+      Alert.alert('Import failed', 'Unable to import this file.');
+      console.error(error);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -121,6 +122,18 @@ export default function BackupScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={pendingImportUri !== null}
+        title="Import backup?"
+        message="This will replace the current data on this device with the selected backup file."
+        confirmLabel="Import"
+        iconName="arrow.up.circle.fill"
+        loading={importing}
+        variant="destructive"
+        onCancel={() => setPendingImportUri(null)}
+        onConfirm={confirmImport}
+      />
     </ThemedView>
   );
 }

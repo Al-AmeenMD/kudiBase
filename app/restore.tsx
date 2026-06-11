@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -17,6 +18,7 @@ export default function RestorePurchasesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [restoring, setRestoring] = useState(false);
+  const [restoredModalVisible, setRestoredModalVisible] = useState(false);
 
   async function handleRestore() {
     try {
@@ -32,9 +34,7 @@ export default function RestorePurchasesScreen() {
       await refreshPlanTier();
 
       if (isPremium) {
-        Alert.alert('Purchases restored', 'Your Premium subscription has been restored!', [
-          { text: 'OK', onPress: () => router.back() },
-        ]);
+        setRestoredModalVisible(true);
       } else {
         Alert.alert('No purchases found', 'No active Premium subscription was found for this account.');
       }
@@ -90,6 +90,21 @@ export default function RestorePurchasesScreen() {
           </ThemedText>
         </Pressable>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={restoredModalVisible}
+        title="Purchases restored"
+        message="Your Premium subscription has been restored."
+        confirmLabel="Done"
+        iconName="checkmark.circle.fill"
+        variant="success"
+        showCancel={false}
+        onCancel={() => setRestoredModalVisible(false)}
+        onConfirm={() => {
+          setRestoredModalVisible(false);
+          router.back();
+        }}
+      />
     </ThemedView>
   );
 }

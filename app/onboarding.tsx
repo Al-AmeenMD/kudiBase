@@ -2,7 +2,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,29 +12,47 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getBusinessProfile, initDb, setAppSetting, upsertBusinessProfile } from '@/lib/db';
+import {
+  activateLocalDataForUser,
+  getBusinessProfile,
+  initDb,
+  setAppSetting,
+  upsertBusinessProfile,
+} from '@/lib/db';
+import { identifyRevenueCatUser } from '@/lib/revenuecat';
 import { supabase } from '@/lib/supabase';
 
 type Mode = 'register' | 'login';
 type RegisterStep = 'account' | 'business';
+type NoticeVariant = 'default' | 'destructive' | 'success';
+type NoticeState = {
+  title: string;
+  message: string;
+  variant: NoticeVariant;
+};
 
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function isNetworkRequestError(error: unknown) {
+  return error instanceof TypeError && error.message.toLowerCase().includes('network request failed');
 }
 
 function OnboardingScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const router = useRouter();
-  const { source } = useLocalSearchParams<{ source?: string }>();
+  const { source, mode: entryMode } = useLocalSearchParams<{ source?: string; mode?: string }>();
   const insets = useSafeAreaInsets();
   const isSettingsMode = source === 'settings';
 
-  const [mode, setMode] = useState<Mode>('register');
+  const [mode, setMode] = useState<Mode>(entryMode === 'login' ? 'login' : 'register');
   const [registerStep, setRegisterStep] = useState<RegisterStep>('account');
   const [businessName, setBusinessName] = useState('');
   const [ownerName, setOwnerName] = useState('');
@@ -43,12 +60,30 @@ function OnboardingScreen() {
   const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<NoticeState | null>(null);
+
+  function showNotice(title: string, message: string, variant: NoticeVariant = 'destructive') {
+    setNotice({ title, message, variant });
+  }
+
+  useEffect(() => {
+    if (entryMode === 'login') {
+      setMode('login');
+      setRegisterStep('account');
+    }
+  }, [entryMode]);
 
   useEffect(() => {
     async function load() {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        await activateLocalDataForUser(data.session.user.id);
+        await identifyRevenueCatUser(data.session.user.id);
+      }
       await initDb();
       const profile = await getBusinessProfile();
       if (!profile) {
@@ -63,7 +98,7 @@ function OnboardingScreen() {
       setAccountNumber(profile.account_number ?? '');
     }
     load().catch((error) => {
-      Alert.alert('Load error', 'Unable to load your profile.');
+      showNotice('Load error', 'Unable to load your profile.');
       console.error(error);
     });
   }, []);
@@ -75,7 +110,7 @@ function OnboardingScreen() {
 
   async function handleLogin() {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Missing fields', 'Please enter your email and password.');
+      showNotice('Missing fields', 'Please enter your email and password.');
       return;
     }
 
@@ -88,11 +123,13 @@ function OnboardingScreen() {
       });
 
       if (signInError) {
-        Alert.alert('Login failed', signInError.message || 'Invalid email or password.');
+        showNotice('Login failed', signInError.message || 'Invalid email or password.');
         return;
       }
 
       if (data.user) {
+        await activateLocalDataForUser(data.user.id);
+        await identifyRevenueCatUser(data.user.id);
         const meta = data.user.user_metadata;
         await initDb();
         await upsertBusinessProfile({
@@ -108,7 +145,14 @@ function OnboardingScreen() {
         router.replace('/');
       }
     } catch (error) {
-      Alert.alert('Login failed', 'Something went wrong. Please try again.');
+      if (isNetworkRequestError(error)) {
+        showNotice(
+          'Connection failed',
+          'KudiBase could not reach the account server. Check your internet connection or app configuration.'
+        );
+        return;
+      }
+      showNotice('Login failed', 'Something went wrong. Please try again.');
       console.error(error);
     } finally {
       setSaving(false);
@@ -117,7 +161,7 @@ function OnboardingScreen() {
 
   async function handleForgotPassword() {
     if (!email.trim()) {
-      Alert.alert('Enter your email', 'Type your email address first, then tap "Forgot password?" again.');
+      showNotice('Enter your email', 'Type your email address first, then tap "Forgot password?" again.');
       return;
     }
 
@@ -125,15 +169,23 @@ function OnboardingScreen() {
       setSaving(true);
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
       if (error) {
-        Alert.alert('Reset failed', error.message || 'Unable to send reset email.');
+        showNotice('Reset failed', error.message || 'Unable to send reset email.');
         return;
       }
-      Alert.alert(
+      showNotice(
         'Check your email',
-        `We sent a password reset link to ${email.trim()}. Follow the link, then come back and log in.`
+        `We sent a password reset link to ${email.trim()}. Follow the link, then come back and log in.`,
+        'success'
       );
-    } catch {
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
+    } catch (error) {
+      if (isNetworkRequestError(error)) {
+        showNotice(
+          'Connection failed',
+          'KudiBase could not reach the account server. Check your internet connection or app configuration.'
+        );
+        return;
+      }
+      showNotice('Error', 'Something went wrong. Please try again later.');
     } finally {
       setSaving(false);
     }
@@ -144,29 +196,44 @@ function OnboardingScreen() {
     const nextPassword = password.trim();
 
     if (!isValidEmail(nextEmail)) {
-      Alert.alert('Invalid email', 'Enter a valid email address to create your account.');
+      showNotice('Invalid email', 'Enter a valid email address to create your account.');
       return;
     }
     if (nextPassword.length < 6) {
-      Alert.alert('Password required', 'Use a password with at least 6 characters.');
+      showNotice('Password required', 'Use a password with at least 6 characters.');
+      return;
+    }
+    if (nextPassword !== confirmPassword.trim()) {
+      showNotice('Passwords do not match', 'Retype the same password to create your account.');
       return;
     }
 
     try {
       setSaving(true);
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: nextEmail,
         password: nextPassword,
       });
 
       if (error) {
-        Alert.alert('Registration failed', error.message || 'Please check your internet connection.');
+        showNotice('Registration failed', error.message || 'Please check your internet connection.');
         return;
       }
 
+      if (data.user) {
+        await activateLocalDataForUser(data.user.id);
+        await identifyRevenueCatUser(data.user.id);
+      }
       setRegisterStep('business');
     } catch (error) {
-      Alert.alert('Registration failed', 'Something went wrong. Please try again.');
+      if (isNetworkRequestError(error)) {
+        showNotice(
+          'Connection failed',
+          'KudiBase could not reach the account server. Check your internet connection or app configuration.'
+        );
+        return;
+      }
+      showNotice('Registration failed', 'Something went wrong. Please try again.');
       console.error(error);
     } finally {
       setSaving(false);
@@ -194,11 +261,16 @@ function OnboardingScreen() {
   async function handleSaveBusiness(skipProfile: boolean = false) {
     try {
       setSaving(true);
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        await activateLocalDataForUser(data.session.user.id);
+        await identifyRevenueCatUser(data.session.user.id);
+      }
       await initDb();
 
       if (!skipProfile) {
         if (!businessName.trim()) {
-          Alert.alert('Business name required', 'Enter your business name to continue.');
+          showNotice('Business name required', 'Enter your business name to continue.');
           return;
         }
 
@@ -226,7 +298,7 @@ function OnboardingScreen() {
         router.replace('/');
       }
     } catch (error) {
-      Alert.alert('Save failed', 'Unable to save your details.');
+      showNotice('Save failed', 'Unable to save your details.');
       console.error(error);
     } finally {
       setSaving(false);
@@ -314,12 +386,13 @@ function OnboardingScreen() {
                   placeholder="Secure password (min 6 chars)"
                   secureTextEntry
                 />
-                <View style={[styles.helperCard, { backgroundColor: colorScheme === 'dark' ? '#16251D' : '#EEF8F1' }]}>
-                  <ThemedText style={[styles.helperTitle, { color: theme.text }]}>Your account comes first</ThemedText>
-                  <ThemedText style={[styles.helperText, { color: theme.muted }]}>
-                    After this, you will add the shop details customers see on receipts and reminders.
-                  </ThemedText>
-                </View>
+                <InputRow
+                  label="Confirm password"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder="Retype your password"
+                  secureTextEntry
+                />
               </>
             ) : null}
 
@@ -427,6 +500,17 @@ function OnboardingScreen() {
           ) : null}
         </View>
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={notice !== null}
+        title={notice?.title ?? ''}
+        message={notice?.message ?? ''}
+        confirmLabel="OK"
+        iconName={notice?.variant === 'success' ? 'checkmark.circle.fill' : 'questionmark.circle.fill'}
+        variant={notice?.variant ?? 'default'}
+        showCancel={false}
+        onCancel={() => setNotice(null)}
+        onConfirm={() => setNotice(null)}
+      />
     </ThemedView>
   );
 }

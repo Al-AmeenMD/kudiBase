@@ -10,6 +10,7 @@ type RevenueCatConfig = {
 };
 
 let configured = false;
+let identifiedUserId: string | null = null;
 let customerInfoPromise: Promise<CustomerInfo> | null = null;
 const CUSTOMER_INFO_TIMEOUT_MS = 1500;
 
@@ -56,6 +57,37 @@ export async function configureRevenueCat() {
   Purchases.configure({ apiKey });
   configured = true;
   return true;
+}
+
+export async function identifyRevenueCatUser(userId: string) {
+  const ok = await configureRevenueCat();
+  if (!ok || identifiedUserId === userId) {
+    return;
+  }
+
+  try {
+    await Purchases.logIn(userId);
+    identifiedUserId = userId;
+    customerInfoPromise = null;
+  } catch (error) {
+    console.warn('RevenueCat user identification failed:', error);
+  }
+}
+
+export async function resetRevenueCatUser() {
+  const ok = await configureRevenueCat();
+  if (!ok) {
+    return;
+  }
+
+  try {
+    await Purchases.logOut();
+  } catch (error) {
+    console.warn('RevenueCat logout failed:', error);
+  } finally {
+    identifiedUserId = null;
+    customerInfoPromise = null;
+  }
 }
 
 export async function getCustomerInfoSafe() {

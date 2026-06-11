@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,12 +13,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getBusinessProfile, initDb, upsertBusinessProfile } from '@/lib/db';
+
+type NoticeVariant = 'default' | 'destructive' | 'success';
+type NoticeState = {
+  title: string;
+  message: string;
+  variant: NoticeVariant;
+  onDone?: () => void;
+};
 
 export default function ProfileScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -35,6 +43,22 @@ export default function ProfileScreen() {
   const [accountNumber, setAccountNumber] = useState('');
   const [logoUri, setLogoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<NoticeState | null>(null);
+
+  function showNotice(
+    title: string,
+    message: string,
+    variant: NoticeVariant = 'destructive',
+    onDone?: () => void
+  ) {
+    setNotice({ title, message, variant, onDone });
+  }
+
+  function closeNotice() {
+    const onDone = notice?.onDone;
+    setNotice(null);
+    onDone?.();
+  }
 
   useEffect(() => {
     async function load() {
@@ -52,7 +76,7 @@ export default function ProfileScreen() {
       }
     }
     load().catch((error) => {
-      Alert.alert('Load error', 'Unable to load profile.');
+      showNotice('Load error', 'Unable to load profile.');
       console.error(error);
     });
   }, []);
@@ -61,7 +85,7 @@ export default function ProfileScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow photo access to choose a logo.');
+        showNotice('Permission needed', 'Allow photo access to choose a logo.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -75,14 +99,14 @@ export default function ProfileScreen() {
       }
       setLogoUri(result.assets[0].uri);
     } catch (error) {
-      Alert.alert('Logo error', 'Unable to select a logo.');
+      showNotice('Logo error', 'Unable to select a logo.');
       console.error(error);
     }
   }
 
   async function handleSave() {
     if (!businessName.trim()) {
-      Alert.alert('Business name required', 'Enter your business name.');
+      showNotice('Business name required', 'Enter your business name.');
       return;
     }
     try {
@@ -98,9 +122,9 @@ export default function ProfileScreen() {
         accountNumber: accountNumber.trim(),
         logoPath: logoUri ?? undefined,
       });
-      Alert.alert('Saved', 'Profile updated.');
+      showNotice('Saved', 'Profile updated.', 'success', () => router.back());
     } catch (error) {
-      Alert.alert('Save failed', 'Unable to save profile.');
+      showNotice('Save failed', 'Unable to save profile.');
       console.error(error);
     } finally {
       setSaving(false);
@@ -181,6 +205,17 @@ export default function ProfileScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={notice !== null}
+        title={notice?.title ?? ''}
+        message={notice?.message ?? ''}
+        confirmLabel="OK"
+        iconName={notice?.variant === 'success' ? 'checkmark.circle.fill' : 'questionmark.circle.fill'}
+        variant={notice?.variant ?? 'default'}
+        showCancel={false}
+        onCancel={closeNotice}
+        onConfirm={closeNotice}
+      />
     </ThemedView>
   );
 }

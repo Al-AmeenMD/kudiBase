@@ -46,10 +46,12 @@ async function syncPremiumStatusToSupabase(plan: PlanTier) {
  * so expired subscriptions are automatically detected.
  */
 export async function isPremium(): Promise<boolean> {
-  // Check dev override first (for testing)
-  const devOverride = await getAppSetting(DEV_OVERRIDE_KEY);
-  if (devOverride === 'true') {
-    return true;
+  if (__DEV__) {
+    // Local testing only. Production builds must use RevenueCat entitlements.
+    const devOverride = await getAppSetting(DEV_OVERRIDE_KEY);
+    if (devOverride === 'true') {
+      return true;
+    }
   }
 
   // Check RevenueCat for real-time subscription status

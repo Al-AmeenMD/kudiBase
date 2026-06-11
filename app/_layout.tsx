@@ -6,10 +6,19 @@ import { useEffect, useState } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 
+import { AppAlertHost } from '@/components/app-alert-host';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { identifyRevenueCatUser, resetRevenueCatUser } from '@/lib/revenuecat';
 import { refreshPlanTier } from '@/lib/subscription';
 import { configureNotifications, getPushToken } from '@/lib/notifications';
-import { getAppSetting, initDb, setAppSetting, upsertBusinessProfile } from '@/lib/db';
+import {
+  activateLocalDataForUser,
+  deactivateLocalDataUser,
+  getAppSetting,
+  initDb,
+  setAppSetting,
+  upsertBusinessProfile,
+} from '@/lib/db';
 import { supabase } from '@/lib/supabase';
 
 export const unstable_settings = {
@@ -57,6 +66,15 @@ export default function RootLayout() {
 
     async function checkOnboarding() {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          await resetRevenueCatUser();
+          await deactivateLocalDataUser();
+          return;
+        }
+
+        await activateLocalDataForUser(session.user.id);
+        await identifyRevenueCatUser(session.user.id);
         await initDb();
 
         const completed = await getAppSetting('onboarding_complete');
@@ -66,23 +84,20 @@ export default function RootLayout() {
           return;
         }
 
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const meta = session.user.user_metadata;
-          if (meta?.business_name) {
-            await upsertBusinessProfile({
-              businessName: meta.business_name,
-              ownerName: meta.owner_name ?? '',
-              phone: meta.phone ?? '',
-              address: meta.address ?? '',
-              email: session.user.email ?? '',
-              bankName: meta.bank_name ?? '',
-              accountNumber: meta.account_number ?? '',
-            });
-            await setAppSetting('onboarding_complete', 'true');
-            setCheckedOnboarding(true);
-            return;
-          }
+        const meta = session.user.user_metadata;
+        if (meta?.business_name) {
+          await upsertBusinessProfile({
+            businessName: meta.business_name,
+            ownerName: meta.owner_name ?? '',
+            phone: meta.phone ?? '',
+            address: meta.address ?? '',
+            email: session.user.email ?? '',
+            bankName: meta.bank_name ?? '',
+            accountNumber: meta.account_number ?? '',
+          });
+          await setAppSetting('onboarding_complete', 'true');
+          setCheckedOnboarding(true);
+          return;
         }
       } catch (err) {
         console.error('Startup error:', err);
@@ -98,6 +113,13 @@ export default function RootLayout() {
     const hasSegments = (segments as string[]).length > 0;
     if (checkedOnboarding && !hasSegments) {
       async function checkRedirect() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          router.replace('/onboarding');
+          return;
+        }
+        await activateLocalDataForUser(session.user.id);
+        await identifyRevenueCatUser(session.user.id);
         const completed = await getAppSetting('onboarding_complete');
         if (completed !== 'true') {
           router.replace('/onboarding');
@@ -113,6 +135,7 @@ export default function RootLayout() {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.user) {
+          await identifyRevenueCatUser(session.user.id);
           const token = await getPushToken();
           
           if (token) {
@@ -134,6 +157,12 @@ export default function RootLayout() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN') {
         checkAndRegister();
+        if (session?.user) {
+          identifyRevenueCatUser(session.user.id).catch(() => {});
+        }
+      }
+      if (event === 'SIGNED_OUT') {
+        resetRevenueCatUser().catch(() => {});
       }
     });
 
@@ -165,6 +194,7 @@ export default function RootLayout() {
         <Stack.Screen name="restore" />
         <Stack.Screen name="manage-subscription" />
       </Stack>
+      <AppAlertHost />
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );

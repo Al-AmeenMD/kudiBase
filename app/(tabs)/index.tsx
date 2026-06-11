@@ -47,6 +47,7 @@ export default function HomeScreen() {
     saleCount: 0,
   });
   const [businessName, setBusinessName] = useState('Add business name');
+  const [businessLogoUri, setBusinessLogoUri] = useState<string | null>(null);
   const [lowStockItems, setLowStockItems] = useState<Array<{ id: string; name: string; stock: number }>>([]);
   const [topDebtors, setTopDebtors] = useState<
     Array<{ id: string; name: string; amount: number; dueDate?: string | null }>
@@ -74,6 +75,7 @@ export default function HomeScreen() {
       })),
     });
     setBusinessName(profile?.business_name?.trim() || 'Add business name');
+    setBusinessLogoUri(profile?.logo_path ?? null);
     const lowStock = items
       .filter((item) => item.stock_qty <= lowStockThreshold)
       .map((item) => ({ id: item.id, name: item.name, stock: item.stock_qty }))
@@ -128,6 +130,7 @@ export default function HomeScreen() {
       if (key === 'business_profile') {
         const next = value?.trim() || 'Add business name';
         setBusinessName(next);
+        loadSummary().catch(() => {});
       }
     });
     return unsubscribe;
@@ -177,6 +180,7 @@ export default function HomeScreen() {
   const quickActionBasis = width >= 900 ? '23%' : width >= 600 ? '31%' : '48%';
   const statColumns = width >= 900 ? 3 : 2;
   const statCardBasis = statColumns === 3 ? '31%' : '48%';
+  const hasBusinessName = businessName !== 'Add business name';
 
   return (
     <ThemedView style={styles.container}>
@@ -195,39 +199,33 @@ export default function HomeScreen() {
           style={[
             styles.header,
             {
-              backgroundColor: colorScheme === 'light' ? theme.secondary : theme.surface,
+              backgroundColor: theme.surface,
               borderColor: theme.border,
             },
           ]}>
-          <View style={[styles.headerAccent, { backgroundColor: theme.primary }]} />
-          <View style={styles.brandRow}>
-            <Image source={require('@/assets/images/kudibase_logo.png')} style={styles.logo} />
-            <View style={styles.brandCopy}>
-              <ThemedText type="subtitle" style={styles.brandTitle}>
-                KudiBase
-              </ThemedText>
-              <ThemedText style={[styles.brandCaption, { color: colorScheme === 'light' ? theme.primaryDeep : theme.muted }]}>
-                Your offline shop assistant
+          <View style={styles.headerTopRow}>
+            <View style={styles.headerCopy}>
+              <ThemedText type="subtitle" style={styles.businessTitle}>
+                {hasBusinessName ? businessName : 'Set up your business'}
               </ThemedText>
             </View>
+            <Pressable
+              onPress={() => router.push('/profile')}
+              android_ripple={{ color: 'rgba(15,106,61,0.12)', borderless: false }}
+              style={({ pressed }) => [
+                styles.profileButton,
+                { borderColor: theme.border, backgroundColor: colorScheme === 'light' ? '#F9F6EF' : theme.background },
+                pressed && styles.pressed,
+              ]}>
+              {businessLogoUri ? (
+                <Image source={{ uri: businessLogoUri }} style={styles.profileLogo} />
+              ) : (
+                <ThemedText style={[styles.profileInitial, { color: theme.primaryDeep }]}>
+                  {(hasBusinessName ? businessName : 'K')[0]?.toUpperCase()}
+                </ThemedText>
+              )}
+            </Pressable>
           </View>
-          <Pressable
-            onPress={() => router.push('/profile')}
-            android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
-            style={({ pressed }) => [
-              styles.pill,
-              {
-                backgroundColor: colorScheme === 'light' ? '#FFFFFF' : theme.secondary,
-                borderColor: colorScheme === 'light' ? 'rgba(15,106,61,0.16)' : 'transparent',
-              },
-              pressed && styles.pressed,
-            ]}>
-            <ThemedText
-              style={[styles.pillText, { color: colorScheme === 'light' ? theme.primaryDeep : theme.onSecondary }]}
-              numberOfLines={1}>
-              {businessName}
-            </ThemedText>
-          </Pressable>
         </View>
 
         {loading ? (
@@ -447,49 +445,42 @@ const styles = StyleSheet.create({
   },
   header: {
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 16,
-    gap: 12,
     overflow: 'hidden',
   },
-  headerAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  brandRow: {
+  headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
   },
-  logo: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-  },
-  brandCopy: {
+  headerCopy: {
     flex: 1,
-    gap: 2,
+    minWidth: 0,
+    gap: 4,
   },
-  brandTitle: {
-    lineHeight: 24,
+  businessTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    flexShrink: 1,
   },
-  brandCaption: {
-    fontSize: 13,
-    opacity: 0.9,
-  },
-  pill: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
+  profileButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  pillText: {
-    fontSize: 13,
+  profileLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  profileInitial: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   pressed: {
     opacity: 0.85,
@@ -561,5 +552,27 @@ const styles = StyleSheet.create({
   listMeta: {
     fontSize: 12,
     opacity: 0.6,
+  },
+  emptyWrap: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+  },
+  premiumCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+  },
+  premiumButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  premiumButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

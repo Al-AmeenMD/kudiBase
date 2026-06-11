@@ -3,10 +3,25 @@ import { Platform } from 'react-native';
 
 export type SqlParams = (string | number | null)[];
 
-let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+const DEFAULT_DB_NAME = 'kudibase.db';
+
+let activeDbName = DEFAULT_DB_NAME;
+const dbPromises = new Map<string, Promise<SQLite.SQLiteDatabase>>();
 let dbQueue: Promise<unknown> = Promise.resolve();
 
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
+function sanitizeUserId(userId: string): string {
+    return userId.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+export function setActiveLocalUser(userId: string | null): void {
+    activeDbName = userId ? `kudibase-${sanitizeUserId(userId)}.db` : DEFAULT_DB_NAME;
+}
+
+export function getActiveDbName(): string {
+    return activeDbName;
+}
+
+export async function getDb(dbName: string = activeDbName): Promise<SQLite.SQLiteDatabase> {
     if (Platform.OS === 'web') {
         throw new Error('SQLite is not supported on web. Use a device or emulator.');
     }
@@ -15,16 +30,17 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
             'expo-sqlite native module not loaded. Restart Metro with -c and ensure expo-sqlite is installed.'
         );
     }
-    if (!dbPromise) {
-        dbPromise = SQLite.openDatabaseAsync('kudibase.db');
+    if (!dbPromises.has(dbName)) {
+        dbPromises.set(dbName, SQLite.openDatabaseAsync(dbName));
     }
-    return dbPromise;
+    return dbPromises.get(dbName)!;
 }
 
 export async function withDb<T>(task: (db: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> {
+    const dbName = activeDbName;
     const run = async () => {
         try {
-            const db = await getDb();
+            const db = await getDb(dbName);
             return await task(db);
         } catch (error) {
             const message = String(error ?? '');
@@ -34,8 +50,8 @@ export async function withDb<T>(task: (db: SQLite.SQLiteDatabase) => Promise<T>)
                 message.includes('prepareAsync') ||
                 message.includes('NullPointerException')
             ) {
-                dbPromise = null;
-                const db = await getDb();
+                dbPromises.delete(dbName);
+                const db = await getDb(dbName);
                 return await task(db);
             }
             throw error;
